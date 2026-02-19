@@ -19,11 +19,34 @@ class Loan:
     n = self.number_of_installments
     self.fee = P * (r * (1+r)**n) / ((1+r)**n - 1) if self.rate != 0 else P / n
 
-  def register_payment(mount: int, date: datetime):
-    pass
+  def register_payment(self, mount: int, date: datetime):
+    self.payments.append(dict(mount=mount, date=date))
 
-  def get_status(date: datetime):
-    pass
+  def get_status(self, date: datetime):
+    current_period = self.initial_date + datetime.timedelta(days=self.term)
+
+    while current_period < date:
+      current_period += datetime.timedelta(days=self.term)
+
+    previous_period = current_period - datetime.timedelta(days=self.term)
+
+    if previous_period > self.initial_date and self._search_payment_by_period(previous_period) == None:
+      return "Pago atrasado"
+    
+    if self._search_payment_by_period(current_period) == None:
+      return "Pago pendiente"
+    
+    return "Periodo saldado"
+
+  def _search_payment_by_period(self, period: datetime):
+    start_date = period - datetime.timedelta(days=self.term)
+    end_date = period
+
+    for payment in self.payments:
+      if start_date <= payment["date"] <= end_date:
+        return payment
+      
+    return None
 
   def get_fee(self) -> float:
     return round(self.fee, 2)
@@ -55,6 +78,7 @@ class Loan:
 
 if __name__ == "__main__":
   today = datetime.datetime.now(ZoneInfo("America/Santo_Domingo"))
-  print(
-    pandas.DataFrame(Loan(1000, 0.0, 15, 11, today).amortization_schedule())
-  )
+  loan = Loan(1000, 0.0, 15, 11, today)
+  loan.register_payment(mount=2000, date=today + datetime.timedelta(days=1))
+  print(loan.get_status(today))
+  print(pandas.DataFrame(loan.amortization_schedule()))

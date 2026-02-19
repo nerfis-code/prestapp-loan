@@ -20,25 +20,70 @@ class Loan:
     # P (r(1+r)^n / (1+r)^n -1)
     self.fee = P * (r * (1+r)**n) / ((1+r)**n - 1) if self.rate != 0 else P / n
 
+  #TODO No se pueda registrar un pago que no cubra el interés
   def register_payment(self, mount: int, date: datetime):
     self.payments.append(dict(mount=mount, date=date))
 
   def get_status(self, date: datetime):
-    current_period = self.initial_date + datetime.timedelta(days=self.term)
+    period = self._get_period_by_date(date)
 
-    while current_period < date:
-      current_period += datetime.timedelta(days=self.term)
-
-    previous_period = current_period - datetime.timedelta(days=self.term)
+    previous_period = period - datetime.timedelta(days=self.term)
 
     if previous_period > self.initial_date and len(self._search_payments_by_period(previous_period)) == 0:
       return "Pago atrasado"
     
-    if len(self._search_payments_by_period(current_period)) == 0:
+    if len(self._search_payments_by_period(period)) == 0:
       return "Pago pendiente"
     
     return "Periodo saldado"
 
+  def _get_period_by_date(self, date: datetime):
+    period = self.initial_date + datetime.timedelta(days=self.term)
+    number = 1
+
+    while period < date:
+      period += datetime.timedelta(days=self.term)
+      number += 1
+    
+    return dict(period=period, number=number)
+
+  def get_detailed_payments(self):
+    detailed_payments = []
+    payments_sorted = sorted(self.payments, key=lambda p: p["date"])
+    remaining_balance = self.capital
+    period_interest = self.rate * remaining_balance
+
+    for i in range(len(payments_sorted)):
+      payment = payments_sorted[i]
+      previous_date: datetime = payments_sorted[i-1]["date"] if i != 0 else self.initial_date
+
+      diff = self._get_period_by_date(payment["date"])["number"] - self._get_period_by_date(previous_date)["number"]
+
+      if diff == 0:
+        pass
+      elif diff == 1: # Pago a tiempo
+        period_interest = self.rate * remaining_balance
+      elif diff == 2: # Pago atrasado
+        period_interest = self.rate * remaining_balance * 2
+      else: # Mora
+        print("Mora")
+        late_fee = diff - 2
+        remaining_balance += late_fee * period_interest
+        period_interest *= 2
+
+      #Este modelo se basa en que el mondo siempre cubre el interés
+      remaining_balance -= payment["mount"] - period_interest
+      detailed_payments.append({
+        "Fecha": payment["date"].strftime("%Y-%m-%d"),
+        "Monto": payment["mount"],
+        "Interés pagado": period_interest,
+        "Abono al capital": payment["mount"] - period_interest,
+        "Capital restante": remaining_balance
+      })
+      period_interest = 0
+
+    return detailed_payments
+  
   def _search_payments_by_period(self, period: datetime):
     start_date = period - datetime.timedelta(days=self.term)
     end_date = period
@@ -47,6 +92,9 @@ class Loan:
 
   def get_fee(self) -> float:
     return round(self.fee, 2)
+  
+  def get_late_fee(self):
+    pass
 
   def outdate_amortization_schedule(self):
     remaining_balance = self.capital
@@ -54,7 +102,6 @@ class Loan:
     table = []
 
     for i in range(self.number_of_installments):
-
       interest_paid = self.rate * remaining_balance
       capital_payment = self.fee - interest_paid
       remaining_balance -= capital_payment
@@ -73,7 +120,9 @@ class Loan:
 
 if __name__ == "__main__":
   today = datetime.datetime.now(ZoneInfo("America/Santo_Domingo"))
-  loan = Loan(1000, 0.0, 15, 11, today)
-  loan.register_payment(mount=2000, date=today + datetime.timedelta(days=1))
-  print(loan.get_status(today))
+  loan = Loan(1000, 0.2, 15, 11, today)
+  for i in range(11):
+    loan.register_payment(mount=153.963142, date=today + datetime.timedelta(days=16*i))
+  
+  print(pandas.DataFrame(loan.get_detailed_payments()))
   print(pandas.DataFrame(loan.outdate_amortization_schedule()))

@@ -39,13 +39,11 @@ class Loan:
 
   def _get_period_by_date(self, date: datetime):
     period = self.initial_date + datetime.timedelta(days=self.term)
-    number = 1
 
     while period < date:
       period += datetime.timedelta(days=self.term)
-      number += 1
     
-    return dict(period=period, number=number)
+    return period
 
   def get_detailed_payments(self):
     detailed_payments = []
@@ -55,9 +53,11 @@ class Loan:
 
     for i in range(len(payments_sorted)):
       payment = payments_sorted[i]
-      previous_date: datetime = payments_sorted[i-1]["date"] if i != 0 else self.initial_date
+      is_first_payment = i == 0
+      previous_date: datetime = payments_sorted[i-1]["date"] if not is_first_payment else self.initial_date
+      diff = (self._get_period_by_date(payment["date"]) - self._get_period_by_date(previous_date)).days / self.term
 
-      diff = self._get_period_by_date(payment["date"])["number"] - self._get_period_by_date(previous_date)["number"]
+      if is_first_payment: diff += 1
 
       if diff == 0:
         pass
@@ -121,8 +121,12 @@ class Loan:
 if __name__ == "__main__":
   today = datetime.datetime.now(ZoneInfo("America/Santo_Domingo"))
   loan = Loan(1000, 0.2, 15, 11, today)
-  for i in range(11):
-    loan.register_payment(mount=153.963142, date=today + datetime.timedelta(days=16*i))
-  
+  loan.register_payment(mount=253.963142, date=today + datetime.timedelta(days=31))
   print(pandas.DataFrame(loan.get_detailed_payments()))
   print(pandas.DataFrame(loan.outdate_amortization_schedule()))
+
+  # for i in range(11):
+  #   loan.register_payment(mount=153.963142, date=today + datetime.timedelta(days=16*i))
+  
+  # print(pandas.DataFrame(loan.get_detailed_payments()))
+  # print(pandas.DataFrame(loan.outdate_amortization_schedule()))

@@ -17,6 +17,7 @@ class Loan:
     P = self.capital
     r = self.rate
     n = self.number_of_installments
+    # P (r(1+r)^n / (1+r)^n -1)
     self.fee = P * (r * (1+r)**n) / ((1+r)**n - 1) if self.rate != 0 else P / n
 
   def register_payment(self, mount: int, date: datetime):
@@ -30,30 +31,24 @@ class Loan:
 
     previous_period = current_period - datetime.timedelta(days=self.term)
 
-    if previous_period > self.initial_date and self._search_payment_by_period(previous_period) == None:
+    if previous_period > self.initial_date and len(self._search_payments_by_period(previous_period)) == 0:
       return "Pago atrasado"
     
-    if self._search_payment_by_period(current_period) == None:
+    if len(self._search_payments_by_period(current_period)) == 0:
       return "Pago pendiente"
     
     return "Periodo saldado"
 
-  def _search_payment_by_period(self, period: datetime):
+  def _search_payments_by_period(self, period: datetime):
     start_date = period - datetime.timedelta(days=self.term)
     end_date = period
 
-    for payment in self.payments:
-      if start_date <= payment["date"] <= end_date:
-        return payment
-      
-    return None
+    return list(filter(lambda p: start_date <= p["date"] <= end_date, self.payments))
 
   def get_fee(self) -> float:
     return round(self.fee, 2)
 
-  def amortization_schedule(self):
-    # P (r(1+r)^n / (1+r)^n -1)
-
+  def outdate_amortization_schedule(self):
     remaining_balance = self.capital
     date: datetime = self.initial_date
     table = []
@@ -81,4 +76,4 @@ if __name__ == "__main__":
   loan = Loan(1000, 0.0, 15, 11, today)
   loan.register_payment(mount=2000, date=today + datetime.timedelta(days=1))
   print(loan.get_status(today))
-  print(pandas.DataFrame(loan.amortization_schedule()))
+  print(pandas.DataFrame(loan.outdate_amortization_schedule()))

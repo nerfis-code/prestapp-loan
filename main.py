@@ -1,3 +1,5 @@
+import json
+
 import pandas
 import datetime
 from zoneinfo import ZoneInfo
@@ -25,7 +27,7 @@ class Loan:
     self.payments.append(dict(mount=mount, date=date))
 
   def get_status(self, date: datetime):
-    period = self._get_period_by_date(date)
+    period = self.get_period_by_date(date)
 
     previous_period = period - datetime.timedelta(days=self.term)
 
@@ -37,7 +39,7 @@ class Loan:
     
     return "Periodo saldado"
 
-  def _get_period_by_date(self, date: datetime):
+  def get_period_by_date(self, date: datetime):
     period = self.initial_date + datetime.timedelta(days=self.term)
 
     while period < date:
@@ -55,7 +57,7 @@ class Loan:
       payment = payments_sorted[i]
       is_first_payment = i == 0
       previous_date: datetime = payments_sorted[i-1]["date"] if not is_first_payment else self.initial_date
-      diff = (self._get_period_by_date(payment["date"]) - self._get_period_by_date(previous_date)).days / self.term
+      diff = (self.get_period_by_date(payment["date"]) - self.get_period_by_date(previous_date)).days / self.term
 
       if is_first_payment: diff += 1
 
@@ -89,7 +91,7 @@ class Loan:
     if date_of_last_payment > now:
       raise Exception("No debe existir pago registrados mas allá de la fecha actual")
     
-    self._get_period_by_date(now)
+    self.get_period_by_date(now)
 
   def search_payments_by_period(self, period: datetime):
     start_date = period - datetime.timedelta(days=self.term)
@@ -117,7 +119,7 @@ class Loan:
 
       number += 1
 
-    date = self._get_period_by_date(detailed_payments[-1]["fecha"])
+    date = self.get_period_by_date(detailed_payments[-1]["fecha"])
     while remaining_balance > 0:
       interest_paid = self.rate * remaining_balance
       capital_payment = min(self.fee - interest_paid, remaining_balance)
@@ -159,42 +161,116 @@ class Loan:
     
     return table
 
-class Period:
-  def __init__(self, loan: Loan, date: datetime, capital, period_interest, outstanding_interest, uncollected_interest):
-    self.capital = capital
-    self.period_interest = period_interest
-    self.outstanding_interest = outstanding_interest
-    self.uncollected_interest = uncollected_interest
-    self.status = "pending"
-    self.loan = loan
-    self.date = date
-
-  def calculate(self):
-    self.payments = loan.search_payments_by_period(self.date)
-
 class DetailedPayment:
-  def __init__(self, date: datetime.datetime, mount: float, interest_paid: float, capital_payment: float, remaining_balance: float):
+  def __init__(self, date: datetime.datetime, mount: float, interest_paid: float, capital_payment: float, remaining_balance: float, late_fee: float):
     self.date = date
     self.mount = mount
     self.interest_paid = interest_paid
     self.capital_payment = capital_payment
     self.remaining_balance = remaining_balance
+    self.late_fee = late_fee
 
   def to_dict(self):
     return {
-      "fecha": self.date.strptime("%Y-%m-%d"),
+      "fecha": self.date.strftime("%Y-%m-%d"),
       "monto": self.mount,
       "interes_pagado": self.interest_paid,
       "abono_al_capital": self.capital_payment,
       "capital_restante": self.remaining_balance,
+      "mora": self.late_fee
     }
+
+class PaymentPipeline:
+  def __init__(self, loan: Loan, date: datetime.datetime):
+    self.loan = loan
+    self.interest: float = None
+    self.unpaid_interest: float = None
+    self.date = date
+    self.payments: list[DetailedPayment] = []
+    self.child = None
+    self.status = "pending"
+
+  def to_dict(self):
+    info = {
+      "Interes": self.interest,
+      "Interes sin pagar": self.unpaid_interest,
+      "Fecha": self.date.strftime("%Y-%m-%d"),
+      "Estado": self.status,
+      "Pagos": list(map(lambda p: p.to_dict(), self.payments))
+    }
+    if self.child:
+      return [info, *self.child.to_dict()]
+    return [info]
+
+  def pipe(self, payment: DetailedPayment) -> DetailedPayment:
+    if self.interest == None:
+        self.interest = loan.rate * payment.remaining_balance
+        self.unpaid_interest = self.interest
+
+    diff_days = (loan.get_period_by_date(payment.date) - self.date).days
+    diff = diff_days / loan.term
+
+    if diff < 0:
+      raise Exception("Un pago no debería pasar de su periodo objetivo")
+
+    if diff == 0: #El pago se hizo en este periodo
+      if self.unpaid_interest != 0:
+        if self.unpaid_interest <= payment.mount - payment.interest_paid:
+          payment.interest_paid += self.unpaid_interest
+          self.unpaid_interest = 0
+          self.status = "paid"
+          payment.remaining_balance -= payment.mount - payment.interest_paid
+        else:
+          self.unpaid_interest = payment.mount - payment.interest_paid
+          payment.interest_paid = payment.mount
+
+      self.payments.append(payment)
+      return payment
+    
+    elif diff == 1:
+      if self.unpaid_interest != 0:
+        if self.unpaid_interest <= payment.mount - payment.interest_paid:
+          payment.interest_paid += self.unpaid_interest
+          self.unpaid_interest = 0
+          self.status = "late payment"
+        else:
+          self.unpaid_interest = payment.mount - payment.interest_paid
+          payment.interest_paid = payment.mount
+          self.status = "late"
+    
+    elif diff > 1:
+      if self.unpaid_interest != 0:
+        self.status = "mora"
+        payment.late_fee += self.unpaid_interest
+        payment.remaining_balance += payment.late_fee
+        self.unpaid_interest = 0
+      
+    if self.child == None:
+      self.child = PaymentPipeline(self.loan, self.date + datetime.timedelta(days=self.loan.term))
+    
+    return self.child.pipe(payment)
 
 if __name__ == "__main__":
   today = datetime.datetime.now(ZoneInfo("America/Santo_Domingo"))
-  loan = Loan(1000, 0.2, 15, 2, today)
-  loan.register_payment(200, today)
-  print(pandas.DataFrame(loan.recalculated_amortization_schedule()))
-  print(pandas.DataFrame(loan.outdate_amortization_schedule()))
+  loan = Loan(10_000, 0.2, 15, 2, today)
+  pipeline = PaymentPipeline(loan, today)
+
+  print(
+    pipeline.pipe(
+      DetailedPayment(
+        date=today + datetime.timedelta(days=30),
+        mount=3000,
+        interest_paid=0,
+        capital_payment=0,
+        remaining_balance=10_000,
+        late_fee=0
+      )
+    ).to_dict()
+  )
+
+  print(
+    json.dumps(pipeline.to_dict(), indent=2)
+  )
 
   # for i in range(11):
   #   loan.register_payment(mount=153.963142, date=today + datetime.timedelta(days=16*i))

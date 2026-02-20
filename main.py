@@ -85,13 +85,24 @@ class Loan:
 
     return detailed_payments
   
-  def get_detailed_periods(self, now: datetime):
-    date_of_last_payment = sorted(self.payments, key=lambda p: p["date"])[-1]["date"]
+  def get_detailed_periods(self):
+    payments_sorted = sorted(self.payments, key=lambda p: p["date"])
+    remaining_balance = self.capital
+    pipeline = PaymentPipeline(loan, self.get_period_by_date(self.initial_date))
 
-    if date_of_last_payment > now:
-      raise Exception("No debe existir pago registrados mas allá de la fecha actual")
+    for payment in payments_sorted:
+      p = pipeline.pipe(
+        DetailedPayment(
+          date=payment["date"],
+          mount=payment["mount"],
+          interest_paid=0,
+          capital_payment=0,
+          remaining_balance=remaining_balance
+        )
+      )
+      remaining_balance = p.remaining_balance
     
-    self.get_period_by_date(now)
+    return pipeline.to_dict()
 
   def search_payments_by_period(self, period: datetime):
     start_date = period - datetime.timedelta(days=self.term)
@@ -162,13 +173,12 @@ class Loan:
     return table
 
 class DetailedPayment:
-  def __init__(self, date: datetime.datetime, mount: float, interest_paid: float, capital_payment: float, remaining_balance: float, late_fee: float):
+  def __init__(self, date: datetime.datetime, mount: float, interest_paid: float, capital_payment: float, remaining_balance: float):
     self.date = date
     self.mount = mount
     self.interest_paid = interest_paid
     self.capital_payment = capital_payment
     self.remaining_balance = remaining_balance
-    self.late_fee = late_fee
 
   def to_dict(self):
     return {
@@ -177,13 +187,13 @@ class DetailedPayment:
       "interes_pagado": self.interest_paid,
       "abono_al_capital": self.capital_payment,
       "capital_restante": self.remaining_balance,
-      "mora": self.late_fee
     }
 
 class PaymentPipeline:
   def __init__(self, loan: Loan, date: datetime.datetime):
     self.loan = loan
     self.interest: float = None
+    self.late_fee = 0
     self.unpaid_interest: float = None
     self.date = date
     self.payments: list[DetailedPayment] = []
@@ -192,15 +202,21 @@ class PaymentPipeline:
 
   def to_dict(self):
     info = {
-      "Interes": self.interest,
-      "Interes sin pagar": self.unpaid_interest,
-      "Fecha": self.date.strftime("%Y-%m-%d"),
-      "Estado": self.status,
-      "Pagos": list(map(lambda p: p.to_dict(), self.payments))
+      "interes": self.interest,
+      "interes_sin_pagar": self.unpaid_interest,
+      "mora": self.late_fee,
+      "fecha": self.date.strftime("%Y-%m-%d"),
+      "estado": self.status,
+      "pagos": list(map(lambda p: p.to_dict(), self.payments))
     }
     if self.child:
       return [info, *self.child.to_dict()]
     return [info]
+  
+  def get_detailed_payments(self):
+    if self.child:
+      return [self.payments, *self.child.get_detailed_payments()]
+    return [self.payments] 
 
   def pipe(self, payment: DetailedPayment) -> DetailedPayment:
     if self.interest == None:
@@ -215,7 +231,8 @@ class PaymentPipeline:
 
     if diff == 0: #El pago se hizo en este periodo
       self.status = "payed" if self.pay_interest(payment) == "complete" else self.status
-      payment.remaining_balance -= payment.mount - payment.interest_paid
+      payment.capital_payment = payment.mount - payment.interest_paid
+      payment.remaining_balance -= payment.capital_payment
       self.payments.append(payment)
       return payment
     
@@ -248,39 +265,20 @@ class PaymentPipeline:
       return
     
     self.status = "mora"
-    payment.late_fee += self.unpaid_interest
-    payment.remaining_balance += payment.late_fee
+    self.late_fee = self.unpaid_interest
+    payment.remaining_balance += self.late_fee
     self.unpaid_interest = 0
 
 if __name__ == "__main__":
   today = datetime.datetime.now(ZoneInfo("America/Santo_Domingo"))
   loan = Loan(10_000, 0.2, 15, 2, today)
-  pipeline = PaymentPipeline(loan, today)
-
-  p = pipeline.pipe(
-    DetailedPayment(
-      date=today + datetime.timedelta(days=30),
-      mount=500,
-      interest_paid=0,
-      capital_payment=0,
-      remaining_balance=10_000,
-      late_fee=0
-    )
-  )
-
-  pipeline.pipe(
-    DetailedPayment(
-      date=today + datetime.timedelta(days=30),
-      mount=2700,
-      interest_paid=0,
-      capital_payment=0,
-      remaining_balance=p.remaining_balance,
-      late_fee=0
-    )
-  )
+  loan.register_payment(500, today + datetime.timedelta(days=13))
+  loan.register_payment(2700, today + datetime.timedelta(days=30))
+  loan.register_payment(2700, today + datetime.timedelta(days=30))
+  
 
   print(
-    json.dumps(pipeline.to_dict(), indent=2)
+    json.dumps(loan.get_detailed_periods(), indent=2)
   )
 
   # for i in range(11):

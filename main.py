@@ -229,18 +229,9 @@ class PaymentPipeline:
 
 if __name__ == "__main__":
   today = datetime.datetime.now(ZoneInfo("America/Santo_Domingo"))
-  loan = Loan(10_000, 0.2, 15, 2, today)
-  loan.register_payment(500, today + datetime.timedelta(days=13))
-  loan.register_payment(2700, today + datetime.timedelta(days=30))
-  loan.register_payment(2700, today + datetime.timedelta(days=30))
-  
-
-  print(
-    list(map(lambda p: p.to_dict(), loan.get_detailed_periods().get_detailed_payments()))
-  )
-  print(pandas.DataFrame(loan.recalculated_amortization_schedule()))
-
-  # for i in range(11):
-  #   loan.register_payment(mount=153.963142, date=today + datetime.timedelta(days=16*i))
-  
-  # print(pandas.DataFrame(loan.get_detailed_payments()))
+  loan = Loan(1000, 0.2, 15, 2, today)
+  loan.register_payment(200, today)
+  print(json.dumps(loan.recalculated_amortization_schedule(), indent=2))
+  # La cuota aquí esta definida en 576.19, pero debido a que solo se necesita 455.19 para concluir el préstamo,
+  # ese monto se designa
+  assert round(loan.recalculated_amortization_schedule()[-1]["monto"], 2) == 455.19

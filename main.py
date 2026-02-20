@@ -29,10 +29,10 @@ class Loan:
 
     previous_period = period - datetime.timedelta(days=self.term)
 
-    if previous_period > self.initial_date and len(self._search_payments_by_period(previous_period)) == 0:
+    if previous_period > self.initial_date and len(self.search_payments_by_period(previous_period)) == 0:
       return "Pago atrasado"
     
-    if len(self._search_payments_by_period(period)) == 0:
+    if len(self.search_payments_by_period(period)) == 0:
       return "Pago pendiente"
     
     return "Periodo saldado"
@@ -83,7 +83,15 @@ class Loan:
 
     return detailed_payments
   
-  def _search_payments_by_period(self, period: datetime):
+  def get_detailed_periods(self, now: datetime):
+    date_of_last_payment = sorted(self.payments, key=lambda p: p["date"])[-1]["date"]
+
+    if date_of_last_payment > now:
+      raise Exception("No debe existir pago registrados mas allá de la fecha actual")
+    
+    self._get_period_by_date(now)
+
+  def search_payments_by_period(self, period: datetime):
     start_date = period - datetime.timedelta(days=self.term)
     end_date = period
 
@@ -150,6 +158,36 @@ class Loan:
       })
     
     return table
+
+class Period:
+  def __init__(self, loan: Loan, date: datetime, capital, period_interest, outstanding_interest, uncollected_interest):
+    self.capital = capital
+    self.period_interest = period_interest
+    self.outstanding_interest = outstanding_interest
+    self.uncollected_interest = uncollected_interest
+    self.status = "pending"
+    self.loan = loan
+    self.date = date
+
+  def calculate(self):
+    self.payments = loan.search_payments_by_period(self.date)
+
+class DetailedPayment:
+  def __init__(self, date: datetime.datetime, mount: float, interest_paid: float, capital_payment: float, remaining_balance: float):
+    self.date = date
+    self.mount = mount
+    self.interest_paid = interest_paid
+    self.capital_payment = capital_payment
+    self.remaining_balance = remaining_balance
+
+  def to_dict(self):
+    return {
+      "fecha": self.date.strptime("%Y-%m-%d"),
+      "monto": self.mount,
+      "interes_pagado": self.interest_paid,
+      "abono_al_capital": self.capital_payment,
+      "capital_restante": self.remaining_balance,
+    }
 
 if __name__ == "__main__":
   today = datetime.datetime.now(ZoneInfo("America/Santo_Domingo"))

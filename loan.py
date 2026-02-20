@@ -3,7 +3,7 @@ import datetime
 class Loan:
   def __init__(self, capital: int, monthly_rate: float, term: int, number_of_installments: int, initial_date: datetime):
     if (term != 15 and term != 30):
-      raise Exception("Los plazos en un prestos deben ser a 15 o 30 dias")
+      raise Exception("Los plazos en un prestos deben ser a 15 o 30 días")
     
     self.capital = capital
     self.rate = monthly_rate if term == 30 else monthly_rate / 2
@@ -18,7 +18,6 @@ class Loan:
     # P (r(1+r)^n / (1+r)^n -1)
     self.fee = P * (r * (1+r)**n) / ((1+r)**n - 1) if self.rate != 0 else P / n
 
-  #TODO No se pueda registrar un pago que no cubra el interés
   def register_payment(self, mount: int, date: datetime):
     self.payments.append(dict(mount=mount, date=date))
 
@@ -28,12 +27,12 @@ class Loan:
     previous_period = period - datetime.timedelta(days=self.term)
 
     if previous_period > self.initial_date and len(self.search_payments_by_period(previous_period)) == 0:
-      return "Pago atrasado"
+      return "pago_atrasado"
     
     if len(self.search_payments_by_period(period)) == 0:
-      return "Pago pendiente"
+      return "pago_pendiente"
     
-    return "Periodo saldado"
+    return "periodo_saldado"
 
   def get_period_by_date(self, date: datetime):
     period = self.initial_date + datetime.timedelta(days=self.term)
@@ -52,9 +51,10 @@ class Loan:
     remaining_balance = self.capital
     pipeline = PaymentPipeline(self, self.get_period_by_date(self.initial_date))
 
-    for payment in payments_sorted:
+    for number, payment in enumerate(payments_sorted, 1):
       p = pipeline.pipe(
         DetailedPayment(
+          number=number,
           date=payment["date"],
           mount=payment["mount"],
           interest_paid=0,
@@ -76,30 +76,30 @@ class Loan:
     remaining_balance = self.capital
     detailed_payments = self.get_detailed_periods().get_detailed_payments()
     table = []
-    number = 1
 
     for payment in detailed_payments:
       table.append(payment.to_dict())
-      table[-1]["numero"] = number
       remaining_balance -= payment.capital_payment
-      number += 1
 
+    number = detailed_payments[-1].number + 1
     date = self.get_period_by_date(detailed_payments[-1].date)
+
     while remaining_balance > 0:
       interest_paid = self.rate * remaining_balance
       capital_payment = min(self.fee - interest_paid, remaining_balance)
       remaining_balance -= capital_payment
       date = date + datetime.timedelta(days=self.term)
 
-      table.append({
-        "numero": number,
-        "fecha": date.strftime("%Y-%m-%d"),
-        "monto": capital_payment + interest_paid,
-        "interes_pagado": interest_paid,
-        "abono_al_capital": capital_payment,
-        "capital_restante": remaining_balance
-      })
-
+      table.append(
+        DetailedPayment(
+          number,
+          date,
+          capital_payment + interest_paid,
+          interest_paid,
+          capital_payment,
+          remaining_balance
+        ).to_dict()
+      )
       number += 1
 
     return table
@@ -115,19 +115,30 @@ class Loan:
       remaining_balance -= capital_payment
       date = date + datetime.timedelta(days=self.term)
 
-      table.append({
-        "numero": i + 1,
-        "fecha": date.strftime("%Y-%m-%d"),
-        "cuota": self.fee,
-        "interes_pagado": interest_paid,
-        "abono_al_capital": capital_payment,
-        "saldo_restante": remaining_balance
-      })
+      table.append(
+        DetailedPayment(
+          i + 1,
+          date,
+          self.fee,
+          interest_paid,
+          capital_payment,
+          remaining_balance
+        ).to_dict()
+      )
     
     return table
 
 class DetailedPayment:
-  def __init__(self, date: datetime.datetime, mount: float, interest_paid: float, capital_payment: float, remaining_balance: float):
+  def __init__(
+      self, 
+      number: int, 
+      date: datetime.datetime, 
+      mount: float, 
+      interest_paid: float, 
+      capital_payment: float, 
+      remaining_balance: float
+  ):
+    self.number = number
     self.date = date
     self.mount = mount
     self.interest_paid = interest_paid
@@ -136,6 +147,17 @@ class DetailedPayment:
 
   def to_dict(self):
     return {
+      "numero": self.number,
+      "fecha": self.date.strftime("%Y-%m-%d"),
+      "monto": round(self.mount, 2),
+      "interes_pagado": round(self.interest_paid, 2),
+      "abono_al_capital": round(self.capital_payment, 2),
+      "capital_restante": round(self.remaining_balance, 2),
+    }
+  
+  def to_dict_precise(self):
+    return {
+      "numero": self.number,
       "fecha": self.date.strftime("%Y-%m-%d"),
       "monto": self.mount,
       "interes_pagado": self.interest_paid,
@@ -183,7 +205,7 @@ class PaymentPipeline:
     if diff < 0:
       raise Exception("Un pago no debería pasar de su periodo objetivo")
 
-    if diff == 0: #El pago se hizo en este periodo
+    if diff == 0:
       self.status = "payed" if self.pay_interest(payment) == "complete" else self.status
       payment.capital_payment = payment.mount - payment.interest_paid
       payment.remaining_balance -= payment.capital_payment

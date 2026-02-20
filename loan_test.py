@@ -11,13 +11,13 @@ def test_periodo_saldado():
   loan = Loan(1000, 0.0, 15, 11, today)
   loan.register_payment(mount=2000, date=today + datetime.timedelta(days=1))
 
-  assert loan.get_status(today) == "Periodo saldado"
+  assert loan.get_status(today) == "periodo_saldado"
 
 def test_pago_pendiente():
-  assert Loan(1000, 0.0, 15, 11, today).get_status(today) == "Pago pendiente"
+  assert Loan(1000, 0.0, 15, 11, today).get_status(today) == "pago_pendiente"
 
 def test_pago_atrasado():
-  assert Loan(1000, 0.0, 15, 11, today).get_status(today + datetime.timedelta(days=16)) == "Pago atrasado"
+  assert Loan(1000, 0.0, 15, 11, today).get_status(today + datetime.timedelta(days=16)) == "pago_atrasado"
 
 def test_pago_atrasado_paga_mas_interés():
   loan = Loan(1000, 0.2, 15, 11, today)
@@ -41,4 +41,4 @@ def test_pago_final_menor_cuota():
   loan.register_payment(200, today)
   # La cuota aquí esta definida en 576.19, pero debido a que solo se necesita 455.19 para concluir el préstamo,
   # ese monto se designa
-  assert round(loan.recalculated_amortization_schedule()[-1]["monto"], 2) == 455.19
+  assert loan.recalculated_amortization_schedule()[-1]["monto"] == 455.19

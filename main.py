@@ -73,7 +73,7 @@ class Loan:
       #Este modelo se basa en que el mondo siempre cubre el interés
       remaining_balance -= payment["mount"] - period_interest
       detailed_payments.append({
-        "fecha": payment["date"].strftime("%Y-%m-%d"),
+        "fecha": payment["date"],
         "monto": payment["mount"],
         "interes_pagado": period_interest,
         "abono_al_capital": payment["mount"] - period_interest,
@@ -89,9 +89,6 @@ class Loan:
 
     return list(filter(lambda p: start_date <= p["date"] <= end_date, self.payments))
 
-  def get_fee(self) -> float:
-    return round(self.fee, 2)
-  
   def recalculated_amortization_schedule(self):
     remaining_balance = self.capital
     detailed_payments = self.get_detailed_payments()
@@ -112,12 +109,12 @@ class Loan:
 
       number += 1
 
-    date = datetime.datetime.now()
+    date = self._get_period_by_date(detailed_payments[-1]["fecha"])
     while remaining_balance > 0:
       interest_paid = self.rate * remaining_balance
       capital_payment = min(self.fee - interest_paid, remaining_balance)
       remaining_balance -= capital_payment
-      date = date
+      date = date + datetime.timedelta(days=self.term)
 
       table.append({
         "numero": number,

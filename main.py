@@ -204,8 +204,8 @@ class PaymentPipeline:
 
   def pipe(self, payment: DetailedPayment) -> DetailedPayment:
     if self.interest == None:
-        self.interest = loan.rate * payment.remaining_balance
-        self.unpaid_interest = self.interest
+      self.interest = loan.rate * payment.remaining_balance
+      self.unpaid_interest = self.interest
 
     diff_days = (loan.get_period_by_date(payment.date) - self.date).days
     diff = diff_days / loan.term
@@ -214,41 +214,43 @@ class PaymentPipeline:
       raise Exception("Un pago no debería pasar de su periodo objetivo")
 
     if diff == 0: #El pago se hizo en este periodo
-      if self.unpaid_interest != 0:
-        if self.unpaid_interest <= payment.mount - payment.interest_paid:
-          payment.interest_paid += self.unpaid_interest
-          self.unpaid_interest = 0
-          self.status = "paid"
-          payment.remaining_balance -= payment.mount - payment.interest_paid
-        else:
-          self.unpaid_interest = payment.mount - payment.interest_paid
-          payment.interest_paid = payment.mount
-
+      self.status = "payed" if self.pay_interest(payment) == "complete" else self.status
       self.payments.append(payment)
       return payment
     
     elif diff == 1:
-      if self.unpaid_interest != 0:
-        if self.unpaid_interest <= payment.mount - payment.interest_paid:
-          payment.interest_paid += self.unpaid_interest
-          self.unpaid_interest = 0
-          self.status = "late payment"
-        else:
-          self.unpaid_interest = payment.mount - payment.interest_paid
-          payment.interest_paid = payment.mount
-          self.status = "late"
-    
+      self.status = "late payment" if self.pay_interest(payment) == "complete" else "late"
+
     elif diff > 1:
-      if self.unpaid_interest != 0:
-        self.status = "mora"
-        payment.late_fee += self.unpaid_interest
-        payment.remaining_balance += payment.late_fee
-        self.unpaid_interest = 0
-      
+      self.apply_late_fee(payment)
+        
     if self.child == None:
       self.child = PaymentPipeline(self.loan, self.date + datetime.timedelta(days=self.loan.term))
     
     return self.child.pipe(payment)
+  
+  def pay_interest(self, payment):
+    if self.unpaid_interest == 0:
+      return
+    
+    if self.unpaid_interest <= payment.mount - payment.interest_paid:
+      payment.interest_paid += self.unpaid_interest
+      self.unpaid_interest = 0
+      payment.remaining_balance -= payment.mount - payment.interest_paid
+      return "complete"
+    else:
+      self.unpaid_interest = payment.mount - payment.interest_paid
+      payment.interest_paid = payment.mount
+      return "partial"
+    
+  def apply_late_fee(self, payment):
+    if self.unpaid_interest == 0:
+      return
+    
+    self.status = "mora"
+    payment.late_fee += self.unpaid_interest
+    payment.remaining_balance += payment.late_fee
+    self.unpaid_interest = 0
 
 if __name__ == "__main__":
   today = datetime.datetime.now(ZoneInfo("America/Santo_Domingo"))
@@ -259,7 +261,7 @@ if __name__ == "__main__":
     pipeline.pipe(
       DetailedPayment(
         date=today + datetime.timedelta(days=30),
-        mount=3000,
+        mount=500,
         interest_paid=0,
         capital_payment=0,
         remaining_balance=10_000,

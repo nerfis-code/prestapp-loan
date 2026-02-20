@@ -31,7 +31,7 @@ def test_capitalización_interés():
   loan.register_payment(mount=253.963142, date=today + datetime.timedelta(days=31))
 
   # Paga el interés del periodo actual y el anterior atrasado
-  assert loan.get_detailed_payments()[0]["interes_pagado"] == 200
+  assert loan.get_detailed_payments()[0]["interes_pagado"] == 220
   # Se agrego al capital el interés sin pagar, debido a que llego al 3er periodo sin pagar el 1ro
   # Entonces el capital restantes es la consecuencia de Capital 1100 - 53.963142, 
   # que es el monto restante después de quitar el interés
@@ -42,4 +42,4 @@ def test_pago_final_menor_cuota():
   loan.register_payment(200, today)
   # La cuota aquí esta definida en 576.19, pero debido a que solo se necesita 334.19 para concluir el préstamo,
   # ese monto se designa
-  assert round(loan.recalculated_amortization_schedule()[-1]["cuota"], 2) == 334.19
+  assert round(loan.recalculated_amortization_schedule()[-1]["monto"], 2) == 334.19

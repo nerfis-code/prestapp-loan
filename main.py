@@ -48,47 +48,13 @@ class Loan:
     return period
 
   def get_detailed_payments(self):
-    detailed_payments = []
-    payments_sorted = sorted(self.payments, key=lambda p: p["date"])
-    remaining_balance = self.capital
-    period_interest = self.rate * remaining_balance
-
-    for i in range(len(payments_sorted)):
-      payment = payments_sorted[i]
-      is_first_payment = i == 0
-      previous_date: datetime = payments_sorted[i-1]["date"] if not is_first_payment else self.initial_date
-      diff = (self.get_period_by_date(payment["date"]) - self.get_period_by_date(previous_date)).days / self.term
-
-      if is_first_payment: diff += 1
-
-      if diff == 0:
-        pass
-      elif diff == 1: # Pago a tiempo
-        period_interest = self.rate * remaining_balance
-      elif diff == 2: # Pago atrasado
-        period_interest = self.rate * remaining_balance * 2
-      else: # Mora
-        late_fee = diff - 2
-        remaining_balance += late_fee * period_interest
-        period_interest *= 2
-
-      #Este modelo se basa en que el mondo siempre cubre el interés
-      remaining_balance -= payment["mount"] - period_interest
-      detailed_payments.append({
-        "fecha": payment["date"],
-        "monto": payment["mount"],
-        "interes_pagado": period_interest,
-        "abono_al_capital": payment["mount"] - period_interest,
-        "capital_restante": remaining_balance
-      })
-      period_interest = 0
-
+    detailed_payments = list(map(lambda p: p.to_dict(), self.get_detailed_periods().get_detailed_payments()))
     return detailed_payments
   
   def get_detailed_periods(self):
     payments_sorted = sorted(self.payments, key=lambda p: p["date"])
     remaining_balance = self.capital
-    pipeline = PaymentPipeline(loan, self.get_period_by_date(self.initial_date))
+    pipeline = PaymentPipeline(self, self.get_period_by_date(self.initial_date))
 
     for payment in payments_sorted:
       p = pipeline.pipe(
@@ -102,7 +68,7 @@ class Loan:
       )
       remaining_balance = p.remaining_balance
     
-    return pipeline.to_dict()
+    return pipeline
 
   def search_payments_by_period(self, period: datetime):
     start_date = period - datetime.timedelta(days=self.term)
@@ -112,25 +78,17 @@ class Loan:
 
   def recalculated_amortization_schedule(self):
     remaining_balance = self.capital
-    detailed_payments = self.get_detailed_payments()
+    detailed_payments = self.get_detailed_periods().get_detailed_payments()
     table = []
     number = 1
 
     for payment in detailed_payments:
-      remaining_balance -= payment["monto"]
-
-      table.append({
-        "numero": number,
-        "fecha": payment["fecha"],
-        "cuota": payment["monto"],
-        "interes_pagado": payment["interes_pagado"],
-        "abono_al_capital": payment["abono_al_capital"],
-        "saldo_restante": remaining_balance
-      })
-
+      table.append(payment.to_dict())
+      table[-1]["numero"] = number
+      remaining_balance -= payment.capital_payment
       number += 1
 
-    date = self.get_period_by_date(detailed_payments[-1]["fecha"])
+    date = self.get_period_by_date(detailed_payments[-1].date)
     while remaining_balance > 0:
       interest_paid = self.rate * remaining_balance
       capital_payment = min(self.fee - interest_paid, remaining_balance)
@@ -140,10 +98,10 @@ class Loan:
       table.append({
         "numero": number,
         "fecha": date.strftime("%Y-%m-%d"),
-        "cuota": capital_payment + interest_paid,
+        "monto": capital_payment + interest_paid,
         "interes_pagado": interest_paid,
         "abono_al_capital": capital_payment,
-        "saldo_restante": remaining_balance
+        "capital_restante": remaining_balance
       })
 
       number += 1
@@ -213,18 +171,18 @@ class PaymentPipeline:
       return [info, *self.child.to_dict()]
     return [info]
   
-  def get_detailed_payments(self):
+  def get_detailed_payments(self) -> list[DetailedPayment]:
     if self.child:
-      return [self.payments, *self.child.get_detailed_payments()]
-    return [self.payments] 
+      return [*self.payments, *self.child.get_detailed_payments()]
+    return [*self.payments] 
 
   def pipe(self, payment: DetailedPayment) -> DetailedPayment:
     if self.interest == None:
-      self.interest = loan.rate * payment.remaining_balance
+      self.interest = self.loan.rate * payment.remaining_balance
       self.unpaid_interest = self.interest
 
-    diff_days = (loan.get_period_by_date(payment.date) - self.date).days
-    diff = diff_days / loan.term
+    diff_days = (self.loan.get_period_by_date(payment.date) - self.date).days
+    diff = diff_days / self.loan.term
 
     if diff < 0:
       raise Exception("Un pago no debería pasar de su periodo objetivo")
@@ -278,11 +236,11 @@ if __name__ == "__main__":
   
 
   print(
-    json.dumps(loan.get_detailed_periods(), indent=2)
+    list(map(lambda p: p.to_dict(), loan.get_detailed_periods().get_detailed_payments()))
   )
+  print(pandas.DataFrame(loan.recalculated_amortization_schedule()))
 
   # for i in range(11):
   #   loan.register_payment(mount=153.963142, date=today + datetime.timedelta(days=16*i))
   
   # print(pandas.DataFrame(loan.get_detailed_payments()))
-  # print(pandas.DataFrame(loan.outdate_amortization_schedule()))

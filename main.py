@@ -66,7 +66,6 @@ class Loan:
       elif diff == 2: # Pago atrasado
         period_interest = self.rate * remaining_balance * 2
       else: # Mora
-        print("Mora")
         late_fee = diff - 2
         remaining_balance += late_fee * period_interest
         period_interest *= 2
@@ -74,11 +73,11 @@ class Loan:
       #Este modelo se basa en que el mondo siempre cubre el interés
       remaining_balance -= payment["mount"] - period_interest
       detailed_payments.append({
-        "Fecha": payment["date"].strftime("%Y-%m-%d"),
-        "Monto": payment["mount"],
-        "Interés pagado": period_interest,
-        "Abono al capital": payment["mount"] - period_interest,
-        "Capital restante": remaining_balance
+        "fecha": payment["date"].strftime("%Y-%m-%d"),
+        "monto": payment["mount"],
+        "interes_pagado": period_interest,
+        "abono_al_capital": payment["mount"] - period_interest,
+        "capital_restante": remaining_balance
       })
       period_interest = 0
 
@@ -93,8 +92,45 @@ class Loan:
   def get_fee(self) -> float:
     return round(self.fee, 2)
   
-  def get_late_fee(self):
-    pass
+  def recalculated_amortization_schedule(self):
+    remaining_balance = self.capital
+    detailed_payments = self.get_detailed_payments()
+    table = []
+    number = 1
+
+    for payment in detailed_payments:
+      remaining_balance -= payment["monto"]
+
+      table.append({
+        "numero": number,
+        "fecha": payment["fecha"],
+        "cuota": payment["monto"],
+        "interes_pagado": payment["interes_pagado"],
+        "abono_al_capital": payment["abono_al_capital"],
+        "saldo_restante": remaining_balance
+      })
+
+      number += 1
+
+    date = datetime.datetime.now()
+    while remaining_balance > 0:
+      interest_paid = self.rate * remaining_balance
+      capital_payment = min(self.fee - interest_paid, remaining_balance)
+      remaining_balance -= capital_payment
+      date = date
+
+      table.append({
+        "numero": number,
+        "fecha": date.strftime("%Y-%m-%d"),
+        "cuota": capital_payment + interest_paid,
+        "interes_pagado": interest_paid,
+        "abono_al_capital": capital_payment,
+        "saldo_restante": remaining_balance
+      })
+
+      number += 1
+
+    return table
 
   def outdate_amortization_schedule(self):
     remaining_balance = self.capital
@@ -108,21 +144,21 @@ class Loan:
       date = date + datetime.timedelta(days=self.term)
 
       table.append({
-        "Número": i + 1,
-        "Fecha": date.strftime("%Y-%m-%d"),
-        "Cuota": self.fee,
-        "Interes pagado": interest_paid,
-        "Abono al capital": capital_payment,
-        "Saldo restante": remaining_balance
+        "numero": i + 1,
+        "fecha": date.strftime("%Y-%m-%d"),
+        "cuota": self.fee,
+        "interes_pagado": interest_paid,
+        "abono_al_capital": capital_payment,
+        "saldo_restante": remaining_balance
       })
     
     return table
 
 if __name__ == "__main__":
   today = datetime.datetime.now(ZoneInfo("America/Santo_Domingo"))
-  loan = Loan(1000, 0.2, 15, 11, today)
-  loan.register_payment(mount=253.963142, date=today + datetime.timedelta(days=31))
-  print(pandas.DataFrame(loan.get_detailed_payments()))
+  loan = Loan(1000, 0.2, 15, 2, today)
+  loan.register_payment(200, today)
+  print(pandas.DataFrame(loan.recalculated_amortization_schedule()))
   print(pandas.DataFrame(loan.outdate_amortization_schedule()))
 
   # for i in range(11):

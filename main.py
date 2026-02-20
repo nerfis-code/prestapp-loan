@@ -5,6 +5,6 @@ from loan import Loan
 
 if __name__ == "__main__":
   today = datetime.datetime.now(ZoneInfo("America/Santo_Domingo"))
-  loan = Loan(1000, 0.2, 15, 2, today)
-  loan.register_payment(200, today)
-  print(pandas.DataFrame(loan.outdate_amortization_schedule()))
+  loan = Loan(1000, 0.2, 15, 11, today)
+  loan.register_payment(200, today+datetime.timedelta(days=45))
+  print(pandas.DataFrame(loan.recalculated_amortization_schedule()))

@@ -84,7 +84,7 @@ class Loan:
     number = detailed_payments[-1].number + 1
     date = self.get_period_by_date(detailed_payments[-1].date)
 
-    while remaining_balance > 0:
+    while round(remaining_balance, 0) != 0:
       interest_paid = self.rate * remaining_balance
       capital_payment = min(self.fee - interest_paid, remaining_balance)
       remaining_balance -= capital_payment

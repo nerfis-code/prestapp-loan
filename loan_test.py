@@ -1,7 +1,6 @@
 import datetime
 from zoneinfo import ZoneInfo
-
-from main import Loan
+from loan import Loan
 
 today = datetime.datetime.now(ZoneInfo("America/Santo_Domingo"))
 

@@ -215,6 +215,7 @@ class PaymentPipeline:
 
     if diff == 0: #El pago se hizo en este periodo
       self.status = "payed" if self.pay_interest(payment) == "complete" else self.status
+      payment.remaining_balance -= payment.mount - payment.interest_paid
       self.payments.append(payment)
       return payment
     
@@ -236,10 +237,9 @@ class PaymentPipeline:
     if self.unpaid_interest <= payment.mount - payment.interest_paid:
       payment.interest_paid += self.unpaid_interest
       self.unpaid_interest = 0
-      payment.remaining_balance -= payment.mount - payment.interest_paid
       return "complete"
     else:
-      self.unpaid_interest = payment.mount - payment.interest_paid
+      self.unpaid_interest -= payment.mount - payment.interest_paid
       payment.interest_paid = payment.mount
       return "partial"
     
@@ -257,17 +257,26 @@ if __name__ == "__main__":
   loan = Loan(10_000, 0.2, 15, 2, today)
   pipeline = PaymentPipeline(loan, today)
 
-  print(
-    pipeline.pipe(
-      DetailedPayment(
-        date=today + datetime.timedelta(days=30),
-        mount=500,
-        interest_paid=0,
-        capital_payment=0,
-        remaining_balance=10_000,
-        late_fee=0
-      )
-    ).to_dict()
+  p = pipeline.pipe(
+    DetailedPayment(
+      date=today + datetime.timedelta(days=30),
+      mount=500,
+      interest_paid=0,
+      capital_payment=0,
+      remaining_balance=10_000,
+      late_fee=0
+    )
+  )
+
+  pipeline.pipe(
+    DetailedPayment(
+      date=today + datetime.timedelta(days=30),
+      mount=2700,
+      interest_paid=0,
+      capital_payment=0,
+      remaining_balance=p.remaining_balance,
+      late_fee=0
+    )
   )
 
   print(

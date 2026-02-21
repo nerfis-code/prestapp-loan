@@ -58,48 +58,9 @@ class Loan:
     
     return all_payments
   
-  def get_detailed_periods(self, date: datetime.datetime=None):
-    payments_sorted = sorted(self.payments, key=lambda p: p["date"])
-    remaining_balance = self.capital
-    pipeline = PaymentPipeline(self, self.get_due_date_by_date(self.initial_date))
-
-    for number, payment in enumerate(payments_sorted, 1):
-      p = pipeline.pipe(
-        DetailedPayment(
-          number=number,
-          date=payment["date"],
-          amount=payment["amount"],
-          interest_paid=0,
-          capital_payment=0,
-          remaining_balance=remaining_balance
-        )
-      )
-      remaining_balance = p.remaining_balance
-    
-    if date != None:
-      pipeline.pipe(
-        DetailedPayment(
-          number=-1,
-          date=date,
-          amount=0,
-          interest_paid=0,
-          capital_payment=0,
-          remaining_balance=remaining_balance,
-          wildcard=True
-        )
-      )
-
-    return pipeline
-
-  def search_payments_by_period(self, period: datetime):
-    start_date = period - datetime.timedelta(days=self.term)
-    end_date = period
-
-    return list(filter(lambda p: start_date <= p["date"] <= end_date, self.payments))
-
   def recalculated_amortization_schedule(self):
     remaining_balance = self.capital
-    detailed_payments = self.get_detailed_periods().get_detailed_payments()
+    detailed_payments = self.get_detailed_payments()
     table = []
 
     for payment in detailed_payments:
@@ -299,87 +260,6 @@ class DetailedPayment:
       "abono_al_capital": self.capital_payment,
       "capital_restante": self.remaining_balance,
     }
-
-class PaymentPipeline:
-  def __init__(self, loan: Loan, date: datetime.datetime):
-    self.loan = loan
-    self.interest: float = None
-    self.late_fee = 0
-    self.unpaid_interest: float = None
-    self.date = date
-    self.payments: list[DetailedPayment] = []
-    self.child = None
-    self.status = "pending"
-
-  def to_dict(self):
-    info = {
-      "interes": self.interest,
-      "interes_sin_pagar": self.unpaid_interest,
-      "mora": self.late_fee,
-      "fecha_de_corte": self.date.strftime("%Y-%m-%d"),
-      "estado": self.status,
-      "pagos": list(map(lambda p: p.to_dict(), self.payments))
-    }
-    if self.child:
-      return [info, *self.child.to_dict()]
-    return [info]
-  
-  def get_detailed_payments(self) -> list[DetailedPayment]:
-    if self.child:
-      return [*self.payments, *self.child.get_detailed_payments()]
-    return [*self.payments]
-
-  def pipe(self, payment: DetailedPayment) -> DetailedPayment:
-    if self.interest == None:
-      self.interest = self.loan.rate * payment.remaining_balance
-      self.unpaid_interest = self.interest
-
-    diff_days = (self.loan.get_due_date_by_date(payment.date) - self.date).days
-    diff = diff_days / self.loan.term
-
-    if diff < 0:
-      raise Exception("Un pago no debería pasar de su periodo objetivo")
-
-    if diff == 0:
-      if payment.wildcard: return
-      self.status = "payed" if self.pay_interest(payment) == "complete" else self.status
-      payment.capital_payment = payment.amount - payment.interest_paid
-      payment.remaining_balance -= payment.capital_payment
-      self.payments.append(payment)
-      return payment
-    
-    elif diff == 1:
-      self.status = "late payment" if self.pay_interest(payment) == "complete" else "late"
-
-    elif diff > 1:
-      self.apply_late_fee(payment)
-        
-    if self.child == None:
-      self.child = PaymentPipeline(self.loan, self.date + datetime.timedelta(days=self.loan.term))
-    
-    return self.child.pipe(payment)
-  
-  def pay_interest(self, payment):
-    if self.unpaid_interest == 0:
-      return "complete"
-    
-    if self.unpaid_interest <= payment.amount - payment.interest_paid:
-      payment.interest_paid += self.unpaid_interest
-      self.unpaid_interest = 0
-      return "complete"
-    else:
-      self.unpaid_interest -= payment.amount - payment.interest_paid
-      payment.interest_paid = payment.amount
-      return "partial"
-    
-  def apply_late_fee(self, payment):
-    if self.unpaid_interest == 0:
-      return
-    
-    self.status = "mora"
-    self.late_fee = self.unpaid_interest
-    payment.remaining_balance += self.late_fee
-    self.unpaid_interest = 0
 
 class DateUtils:
   @staticmethod

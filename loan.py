@@ -22,16 +22,12 @@ class Loan:
     self.payments.append(dict(mount=mount, date=date))
 
   def get_status(self, date: datetime):
-    period = self.get_period_by_date(date)
+    detailed_periods = self.get_detailed_periods(date).to_dict()
 
-    previous_period = period - datetime.timedelta(days=self.term)
-
-    if previous_period > self.initial_date and len(self.search_payments_by_period(previous_period)) == 0:
+    if len(detailed_periods) > 1 and detailed_periods[-2]["estado"] == "late":
       return "pago_atrasado"
-    
-    if len(self.search_payments_by_period(period)) == 0:
+    elif detailed_periods[-1]["estado"] == "pending":
       return "pago_pendiente"
-    
     return "periodo_saldado"
 
   def get_period_by_date(self, date: datetime):
@@ -46,7 +42,7 @@ class Loan:
     detailed_payments = list(map(lambda p: p.to_dict(), self.get_detailed_periods().get_detailed_payments()))
     return detailed_payments
   
-  def get_detailed_periods(self):
+  def get_detailed_periods(self, date: datetime.datetime=None):
     payments_sorted = sorted(self.payments, key=lambda p: p["date"])
     remaining_balance = self.capital
     pipeline = PaymentPipeline(self, self.get_period_by_date(self.initial_date))
@@ -64,6 +60,19 @@ class Loan:
       )
       remaining_balance = p.remaining_balance
     
+    if date != None:
+      pipeline.pipe(
+        DetailedPayment(
+          number=-1,
+          date=date,
+          mount=0,
+          interest_paid=0,
+          capital_payment=0,
+          remaining_balance=remaining_balance,
+          wildcard=True
+        )
+      )
+
     return pipeline
 
   def search_payments_by_period(self, period: datetime):
@@ -136,7 +145,8 @@ class DetailedPayment:
       mount: float, 
       interest_paid: float, 
       capital_payment: float, 
-      remaining_balance: float
+      remaining_balance: float,
+      wildcard: bool=False
   ):
     self.number = number
     self.date = date
@@ -144,6 +154,7 @@ class DetailedPayment:
     self.interest_paid = interest_paid
     self.capital_payment = capital_payment
     self.remaining_balance = remaining_balance
+    self.wildcard = wildcard
 
   def to_dict(self):
     return {
@@ -192,7 +203,7 @@ class PaymentPipeline:
   def get_detailed_payments(self) -> list[DetailedPayment]:
     if self.child:
       return [*self.payments, *self.child.get_detailed_payments()]
-    return [*self.payments] 
+    return [*self.payments]
 
   def pipe(self, payment: DetailedPayment) -> DetailedPayment:
     if self.interest == None:
@@ -206,6 +217,7 @@ class PaymentPipeline:
       raise Exception("Un pago no debería pasar de su periodo objetivo")
 
     if diff == 0:
+      if payment.wildcard: return
       self.status = "payed" if self.pay_interest(payment) == "complete" else self.status
       payment.capital_payment = payment.mount - payment.interest_paid
       payment.remaining_balance -= payment.capital_payment
@@ -225,7 +237,7 @@ class PaymentPipeline:
   
   def pay_interest(self, payment):
     if self.unpaid_interest == 0:
-      return
+      return "complete"
     
     if self.unpaid_interest <= payment.mount - payment.interest_paid:
       payment.interest_paid += self.unpaid_interest

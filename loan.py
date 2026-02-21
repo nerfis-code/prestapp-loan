@@ -2,7 +2,15 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 class Loan:
-  def __init__(self, capital: int, monthly_rate: float, term: int, number_of_installments: int, initial_date: datetime):
+  def __init__(
+      self, 
+      capital: int, 
+      monthly_rate: float, 
+      term: int, 
+      number_of_installments: int, 
+      initial_date: datetime,
+      now: datetime,
+    ):
     if (term != 15 and term != 30):
       raise Exception("Los plazos en un prestos deben ser a 15 o 30 días")
     
@@ -11,7 +19,7 @@ class Loan:
     self.term = term
     self.number_of_installments = number_of_installments
     self.initial_date = initial_date
-    self.payments = []
+    self.payments: list[DetailedPayment] = []
 
     P = self.capital
     r = self.rate
@@ -19,17 +27,46 @@ class Loan:
     # P (r(1+r)^n / (1+r)^n -1)
     self.fee = P * (r * (1+r)**n) / ((1+r)**n - 1) if self.rate != 0 else P / n
 
+    self.installments: list[Installment]
+    self.status: str
+    self.remaining_balance: float
+    self.now = now
+    self.process_loan(now)
+
   def register_payment(self, amount: int, date: datetime):
-    self.payments.append(dict(amount=amount, date=date))
+    if self.status == "concluido":
+      raise Exception("Se ha intentado registrar un pago en un préstamo ya concluido")
 
-  def get_status(self, date: datetime):
-    detailed_periods = self.process_installments(date)
+    if (date - self.now).days >= 1:
+      raise Exception("Se ha intentado registrar un pago mas allá de la fecha actual")
+    
+    detailed_payment = DetailedPayment(
+      number=len(self.payments),
+      date=date,
+      amount=amount,
+      interest_paid=0,
+      capital_payment=0,
+      remaining_balance=0,
+    )
+    self.payments.append(detailed_payment)
 
-    if len(detailed_periods) > 1 and detailed_periods[-2].status == "late":
-      return "pago_atrasado"
-    elif detailed_periods[-1].status == "pending":
-      return "pago_pendiente"
-    return "periodo_saldado"
+    self.remaining_balance = self.process_installment(
+      [detailed_payment],
+      self.installments,
+      self.remaining_balance,
+      True,
+    )
+    self.update_status()
+
+  def update_status(self):
+    if self.remaining_balance < 0.01:
+      self.status = "concluido"
+    elif len(self.installments) > 1 and self.installments[-2].status == "late":
+      self.status = "pago_atrasado"
+    elif self.installments[-1].status == "pending":
+      self.status = "pago_pendiente"
+    else:
+      self.status = "periodo_saldado"
 
   def get_due_date_by_date(self, date: datetime):
     period = self.initial_date + timedelta(days=self.term)
@@ -39,22 +76,11 @@ class Loan:
     
     return period
 
-  def get_number_of_installment(self, date: datetime):
-    installment = self.initial_date + timedelta(days=self.term)
-    number = 1
-
-    while installment < date:
-      installment += timedelta(days=self.term)
-      number += 1
-    
-    return number
+  def get_current_number_of_installment(self):
+    return int((self.now - self.initial_date).days / self.term) + 1
 
   def get_detailed_payments(self) -> list[DetailedPayment]:
-    all_payments = []
-    for payments in [i.payments for i in self.process_installments(None)]:
-      all_payments.extend(payments)
-    
-    return all_payments
+    return self.payments
   
   def recalculated_amortization_schedule(self):
     remaining_balance = self.capital
@@ -113,33 +139,22 @@ class Loan:
     return table
   
   def process_loan(self, now: datetime):
-    installments = self.process_installments(now)
-    remaining_balance = installments[-1].remaining_balance
-    status = "open"
-
-    if remaining_balance > 0.01:
-      status = "closed"
+    self.installments = self.process_installments()
+    self.remaining_balance = self.installments[-1].remaining_balance
+    self.update_status()
     
-    return {
-      "installments": installments,
-      "remaining_balance": remaining_balance,
-      "status": status
-    }
-
-  def process_installments(self, now: datetime):
+  def process_installments(self):
     remaining_balance = self.capital
-    payment_queue = sorted(self.payments, key=lambda p: p["date"])
+    payment_queue = sorted(self.payments, key=lambda p: p.date)
 
     due_dates: list[datetime]
     due_dates = [self.initial_date + timedelta(days=self.term*i) 
-                 for i in range(1, self.get_number_of_installment(now or payment_queue[-1]["date"]) + 1)]
-    payment_number = 0
+                 for i in range(1, self.get_current_number_of_installment() + 1)]
     installments: list[Installment] = []
   
     for number, due_date in enumerate(due_dates):
       interest_due = remaining_balance * self.rate
 
-      payments = []
       installment = Installment(
         number=number,
         due_date=due_date,
@@ -153,19 +168,10 @@ class Loan:
       
       installments.append(installment)
 
-      while payment_queue and payment_queue[0]["date"] < due_date:
-        payment = payment_queue.pop(0)
-
-        detailed_payment = DetailedPayment(
-          number=payment_number,
-          date=payment["date"],
-          amount=payment["amount"],
-          interest_paid=0,
-          capital_payment=0,
-          remaining_balance=0,
-        )
+      payments = []
+      while payment_queue and payment_queue[0].date < due_date:
+        detailed_payment = payment_queue.pop(0)
         payments.append(detailed_payment)
-        payment_number += 1
 
       remaining_balance = self.process_installment(
         payments,
@@ -226,6 +232,15 @@ class Loan:
     if installment.interest_covered == installment.interest:
       installment.status = "payed" if installment.status == "pending" else "late payment"
 
+  def to_dict(self):
+    return {
+      "initial_date": self.initial_date.strftime("%Y-%m-%d"),
+      "now": self.now.strftime("%Y-%m-%d"),
+      "remaining_balance": self.remaining_balance,
+      "status": self.status,
+      "installments": [l.to_dict() for l in self.installments]
+    }
+  
 class Installment:
   def __init__(
       self,

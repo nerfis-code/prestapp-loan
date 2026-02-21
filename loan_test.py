@@ -42,3 +42,10 @@ def test_pago_final_menor_cuota():
   # La cuota aquí esta definida en 576.19, pero debido a que solo se necesita 455.19 para concluir el préstamo,
   # ese monto se designa
   assert loan.recalculated_amortization_schedule()[-1]["monto"] == 455.19
+
+def test_tabla_de_amortización():
+  loan = Loan(1_000_000, 0.2, 30, 24, today)
+  assert len(loan.outdate_amortization_schedule()) == 24
+
+  loan = Loan(1_000_000_000, 0.2, 30, 100, today)
+  assert len(loan.outdate_amortization_schedule()) == 100

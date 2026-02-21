@@ -25,9 +25,7 @@ class Loan:
   def get_status(self, date: datetime):
     detailed_periods = self.process_installments(date)
 
-    # Los periodos que estén en moran también caen en pagos_atrasados, ya que el cliente todavía 
-    # tiene la posibilidad de eliminar este estado, haciendo un pago en este periodo.
-    if len(detailed_periods) > 1 and (detailed_periods[-2].status == "late" or detailed_periods[-2].status == "mora"):
+    if len(detailed_periods) > 1 and detailed_periods[-2].status == "late":
       return "pago_atrasado"
     elif detailed_periods[-1].status == "pending":
       return "pago_pendiente"
@@ -118,7 +116,8 @@ class Loan:
     remaining_balance = self.capital
     payment_queue = sorted(self.payments, key=lambda p: p["date"])
 
-    due_dates: list[datetime] = [self.initial_date + timedelta(days=self.term*i) 
+    due_dates: list[datetime]
+    due_dates = [self.initial_date + timedelta(days=self.term*i) 
                  for i in range(1, self.get_number_of_installment(now or payment_queue[-1]["date"]) + 1)]
     payment_number = 0
     installments: list[Installment] = []
@@ -159,7 +158,9 @@ class Loan:
         for p in payments:
           self.process_interest(p, prev_installment)
 
-        if prev_installment.status == "late":
+        # Solo sera mora cuando el plazo de pago atrasado concluya sin pagar el interés,
+        # osea que no se allá amortizado el interés y el plazo no este anterior al actual
+        if prev_installment.status == "late" and prev_installment.number != len(due_dates) - 2:
           prev_installment.status = "mora"
           remaining_balance += prev_installment.interest - prev_installment.interest_covered
           installment.interest = remaining_balance * self.rate

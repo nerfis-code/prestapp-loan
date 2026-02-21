@@ -10,4 +10,4 @@ if __name__ == "__main__":
 
   loan.register_payment(800, d.future(3))
   loan.register_payment(800, d.future(23))
-  print(json.dumps(loan.process_loan(d.future(44)), indent=2))
+  print(json.dumps([i.to_dict() for i in loan.process_loan(d.future(44))], indent=2))

@@ -155,22 +155,24 @@ class Loan:
     due_dates: list[datetime.datetime] = [self.initial_date + datetime.timedelta(days=self.term*i) 
                  for i in range(1, self.get_number_of_installment(now or payment_queue[-1]["date"]) + 1)]
     
-    installments = []
+    installments: list[Installment] = []
   
     for number, due_date in enumerate(due_dates):
       interest_due = remaining_balance * self.rate
 
       payments = []
-      installment = {
-        "number": number,
-        "due_date": due_date.strftime("%Y-%m-%d"),
-        "status": "pending",
-        "interest": interest_due,
-        "interest_covered": 0,
-        "capital_covered": 0,
-        "remaining_balance": remaining_balance,
-        "payments": []
-      }
+      installment = Installment(
+        number=number,
+        due_date=due_date,
+        status="pending",
+        interest=interest_due,
+        interest_covered=0,
+        capital_covered=0,
+        remaining_balance=remaining_balance,
+        payments=[],
+      )
+      
+      installments.append(installment)
 
       while payment_queue and payment_queue[0]["date"] < due_date:
         payment = payment_queue.pop(0)
@@ -188,37 +190,35 @@ class Loan:
       if len(installments) > 0:
         prev_installment = installments[-1]
         [self.process_payment(p, prev_installment) for p in payments]
-        if prev_installment["status"] == "late":
-          prev_installment["status"] = "mora"
-          remaining_balance += prev_installment["interest"] - prev_installment["interest_covered"] 
+        if prev_installment.status == "late":
+          prev_installment.status = "mora"
+          remaining_balance += prev_installment.interest - prev_installment.interest_covered
 
       [self.process_payment(p, installment) for p in payments]
       
       for payment in payments:
-        installment["capital_covered"] += payment.capital_payment
+        installment.capital_covered += payment.capital_payment
         remaining_balance -= payment.capital_payment
         payment.remaining_balance = remaining_balance
-        installment["payments"].append(payment.to_dict())
+        installment.payments.append(payment)
 
-      installment["remaining_balance"] = remaining_balance
+      installment.remaining_balance = remaining_balance
 
-      if installment["status"] != "payed" and number != len(due_dates) - 1:
-        installment["status"] = "late"
-      
-      installments.append(installment)
+      if installment.status != "payed" and number != len(due_dates) - 1:
+        installment.status = "late"
 
     return installments
   
-  def process_payment(self, payment: DetailedPayment, installment):
-    if installment["status"] == "payed" or installment["status"] == "late payment":
+  def process_payment(self, payment: DetailedPayment, installment: Installment):
+    if installment.status == "payed" or installment.status == "late payment":
       return
     
-    installment["interest_covered"] = min(installment["interest"], payment.amount - payment.interest_paid)
-    payment.interest_paid += installment["interest_covered"]
+    installment.interest_covered = min(installment.interest, payment.amount - payment.interest_paid)
+    payment.interest_paid += installment.interest_covered
     payment.capital_payment = payment.amount - payment.interest_paid
 
-    if installment["interest_covered"] == installment["interest"]:
-      installment["status"] = "payed" if installment["status"] == "pending" else "late payment"
+    if installment.interest_covered == installment.interest:
+      installment.status = "payed" if installment.status == "pending" else "late payment"
 
 class Installment:
   def __init__(
@@ -244,13 +244,13 @@ class Installment:
   def to_dict(self):
     return {
       "numero": self.number,
-      "fecha_final": self.due_date,
+      "fecha_final": self.due_date.strftime("%Y-%m-%d"),
       "estado": self.status,
       "interes": self.interest,
       "interes_cubierto": self.interest_covered,
       "capital_cubierto": self.capital_covered,
       "capital_restante": self.remaining_balance,
-      "numero": [p.to_dict() for p in self.payments],
+      "pagos": [p.to_dict() for p in self.payments],
     }
 
 

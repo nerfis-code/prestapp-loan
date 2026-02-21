@@ -112,6 +112,20 @@ class Loan:
     
     return table
   
+  def process_loan(self, now: datetime):
+    installments = self.process_installments(now)
+    remaining_balance = installments[-1].remaining_balance
+    status = "open"
+
+    if remaining_balance > 0.01:
+      status = "closed"
+    
+    return {
+      "installments": installments,
+      "remaining_balance": remaining_balance,
+      "status": status
+    }
+
   def process_installments(self, now: datetime):
     remaining_balance = self.capital
     payment_queue = sorted(self.payments, key=lambda p: p["date"])
@@ -152,38 +166,56 @@ class Loan:
         )
         payments.append(detailed_payment)
         payment_number += 1
-      
-      if len(installments) > 1:
-        prev_installment = installments[-2]
-        for p in payments:
-          self.process_interest(p, prev_installment)
 
-        # Solo sera mora cuando el plazo de pago atrasado concluya sin pagar el interés,
-        # osea que no se allá amortizado el interés y el plazo no este anterior al actual
-        if prev_installment.status == "late" and prev_installment.number != len(due_dates) - 2:
-          prev_installment.status = "mora"
-          remaining_balance += prev_installment.interest - prev_installment.interest_covered
-          installment.interest = remaining_balance * self.rate
-
-      for p in payments:
-          self.process_interest(p, installment)
-      
-      for payment in payments:
-        payment.capital_payment = payment.amount - payment.interest_paid
-        installment.capital_covered += payment.capital_payment
-
-        remaining_balance -= payment.capital_payment
-        payment.remaining_balance = remaining_balance
-
-        installment.payments.append(payment)
-
-      installment.remaining_balance = remaining_balance
-
-      if installment.status != "payed" and number != len(due_dates) - 1:
-        installment.status = "late"
+      remaining_balance = self.process_installment(
+        payments,
+        installments,
+        remaining_balance, 
+        installments[-1].number == len(due_dates) - 1
+      )
 
     return installments
   
+  def process_installment(
+      self, 
+      payments: list[DetailedPayment], 
+      installments: list[Installment], 
+      remaining_balance: float, 
+      last_installment: bool
+    ):
+    installment = installments[-1]
+
+    if len(installments) > 1:
+      prev_installment = installments[-2]
+      for p in payments:
+        self.process_interest(p, prev_installment)
+
+      # Solo sera mora cuando el plazo de pago atrasado concluya sin pagar el interés,
+      # osea que no se allá amortizado el interés y el plazo no este anterior al actual
+      if prev_installment.status == "late" and not last_installment:
+        prev_installment.status = "mora"
+        remaining_balance += prev_installment.interest - prev_installment.interest_covered
+        installment.interest = remaining_balance * self.rate
+
+    for p in payments:
+        self.process_interest(p, installment)
+    
+    for payment in payments:
+      payment.capital_payment = payment.amount - payment.interest_paid
+      installment.capital_covered += payment.capital_payment
+
+      remaining_balance -= payment.capital_payment
+      payment.remaining_balance = remaining_balance
+
+      installment.payments.append(payment)
+
+    installment.remaining_balance = remaining_balance
+
+    if installment.status != "payed" and not last_installment:
+      installment.status = "late"
+    
+    return remaining_balance
+
   def process_interest(self, payment: DetailedPayment, installment: Installment):
     if installment.status == "payed" or installment.status == "late payment":
       return

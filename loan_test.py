@@ -23,18 +23,18 @@ def test_pago_atrasado_paga_mas_interés():
   loan = Loan(1000, 0.2, 15, 11, today)
   loan.register_payment(amount=253.963142, date=today + datetime.timedelta(days=16))
 
-  assert loan.get_detailed_payments()[0]["interes_pagado"] == 200
+  assert loan.get_detailed_payments()[0].interest_paid == 200
 
 def test_capitalización_interés():
   loan = Loan(1000, 0.2, 15, 11, today)
   loan.register_payment(amount=300, date=today + datetime.timedelta(days=31))
 
   # Paga el interés del periodo actual y el anterior atrasado
-  assert loan.get_detailed_payments()[0]["interes_pagado"] == 220
+  assert loan.get_detailed_payments()[0].interest_paid == 220
   # Se agrego al capital el interés sin pagar, debido a que llego al 3er periodo sin pagar el 1ro
   # Entonces el capital restantes es la consecuencia de Capital 1100 - 300 - 220, 
   # que es el monto restante después de quitar el interés
-  assert loan.get_detailed_payments()[0]["capital_restante"] == 1020
+  assert loan.get_detailed_payments()[0].remaining_balance == 1020
 
 def test_pago_final_menor_cuota():
   loan = Loan(1000, 0.2, 15, 2, today)

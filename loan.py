@@ -23,11 +23,13 @@ class Loan:
     self.payments.append(dict(amount=amount, date=date))
 
   def get_status(self, date: datetime):
-    detailed_periods = self.get_detailed_periods(date).to_dict()
+    detailed_periods = self.process_loan(date)
 
-    if len(detailed_periods) > 1 and detailed_periods[-2]["estado"] == "late":
+    # Los periodos que estén en moran también caen en pagos_atrasados, ya que el cliente todavía 
+    # tiene la posibilidad de eliminar este estado, haciendo un pago en este periodo.
+    if len(detailed_periods) > 1 and (detailed_periods[-2].status == "late" or detailed_periods[-2].status == "mora"):
       return "pago_atrasado"
-    elif detailed_periods[-1]["estado"] == "pending":
+    elif detailed_periods[-1].status == "pending":
       return "pago_pendiente"
     return "periodo_saldado"
 
@@ -49,9 +51,12 @@ class Loan:
     
     return number
 
-  def get_detailed_payments(self):
-    detailed_payments = list(map(lambda p: p.to_dict(), self.get_detailed_periods().get_detailed_payments()))
-    return detailed_payments
+  def get_detailed_payments(self) -> list[DetailedPayment]:
+    all_payments = []
+    for payments in [i.payments for i in self.process_loan(None)]:
+      all_payments.extend(payments)
+    
+    return all_payments
   
   def get_detailed_periods(self, date: datetime.datetime=None):
     payments_sorted = sorted(self.payments, key=lambda p: p["date"])
@@ -187,12 +192,14 @@ class Loan:
         )
         payments.append(detailed_payment)
       
-      if len(installments) > 0:
-        prev_installment = installments[-1]
+      if len(installments) > 1:
+        prev_installment = installments[-2]
         [self.process_payment(p, prev_installment) for p in payments]
+
         if prev_installment.status == "late":
           prev_installment.status = "mora"
           remaining_balance += prev_installment.interest - prev_installment.interest_covered
+          installment.interest = remaining_balance * self.rate
 
       [self.process_payment(p, installment) for p in payments]
       

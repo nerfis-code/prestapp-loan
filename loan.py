@@ -87,7 +87,7 @@ class Loan:
       number_of_installments: int, 
       payment_history: list[dict],
       initial_date: str,
-      now: str = None,
+      end_date: str = None,
     ):
     if (term != 15 and term != 30):
       raise Exception("Los plazos en un prestos deben ser a 15 o 30 días")
@@ -108,7 +108,7 @@ class Loan:
     self.installments: list[Installment]
     self.status: str
     self.remaining_balance: float
-    self.now = datetime.strptime(now, "%Y-%m-%d") if now else datetime.now(ZoneInfo("America/Santo_Domingo"))
+    self.end_date = datetime.strptime(end_date, "%Y-%m-%d") if end_date != None else datetime.now(ZoneInfo("America/Santo_Domingo"))
     
     for payment in payment_history:
       self.register_payment(payment)
@@ -120,7 +120,7 @@ class Loan:
     
     detailed_payment = DetailedPayment(
       number=len(self.payments),
-      date=self.now,
+      date=self.end_date,
       amount=amount,
       interest_paid=0,
       capital_payment=0,
@@ -140,7 +140,7 @@ class Loan:
     amount = payment["amount"]
     date = datetime.strptime(payment["date"], "%Y-%m-%d")
     
-    if (date - self.now).days >= 1:
+    if (date - self.end_date).days >= 1:
       raise Exception("Se ha intentado registrar un pago mas allá de la fecha actual")
     
     detailed_payment = DetailedPayment(
@@ -172,7 +172,7 @@ class Loan:
     return period
 
   def get_current_number_of_installment(self):
-    return int((self.now - self.initial_date).days / self.term) + 1
+    return int((self.end_date - self.initial_date).days / self.term) + 1
 
   def recalculated_amortization_schedule(self):
     remaining_balance = self.capital
@@ -327,7 +327,7 @@ class Loan:
   def to_dict(self):
     return {
       "fecha_inicial": self.initial_date.strftime("%Y-%m-%d"),
-      "ahora": self.now.strftime("%Y-%m-%d"),
+      "fecha_final": self.end_date.strftime("%Y-%m-%d"),
       "capital_restante": self.remaining_balance,
       "estado": self.status,
       "plazos": [l.to_dict() for l in self.installments]

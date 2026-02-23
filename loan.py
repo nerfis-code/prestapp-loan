@@ -1,6 +1,76 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+class DetailedPayment:
+  def __init__(
+      self, 
+      number: int, 
+      date: datetime, 
+      amount: float, 
+      interest_paid: float, 
+      capital_payment: float, 
+      remaining_balance: float
+  ):
+    self.number = number
+    self.date = date
+    self.amount = amount
+    self.interest_paid = interest_paid
+    self.capital_payment = capital_payment
+    self.remaining_balance = remaining_balance
+
+  def to_dict(self):
+    return {
+      "numero": self.number,
+      "fecha": self.date.strftime("%Y-%m-%d"),
+      "monto": round(self.amount, 2),
+      "interes_pagado": round(self.interest_paid, 2),
+      "abono_al_capital": round(self.capital_payment, 2),
+      "capital_restante": round(self.remaining_balance, 2),
+    }
+  
+  def to_dict_precise(self):
+    return {
+      "numero": self.number,
+      "fecha": self.date.strftime("%Y-%m-%d"),
+      "monto": self.amount,
+      "interes_pagado": self.interest_paid,
+      "abono_al_capital": self.capital_payment,
+      "capital_restante": self.remaining_balance,
+    }
+    
+class Installment:
+  def __init__(
+      self,
+      number: int, 
+      due_date: datetime, 
+      status: str, 
+      interest: float, 
+      interest_covered: float,
+      capital_covered: float,
+      remaining_balance: float,
+      payments: list[DetailedPayment]
+  ):
+    self.number = number
+    self.due_date = due_date
+    self.status = status
+    self.interest = interest
+    self.interest_covered = interest_covered
+    self.capital_covered = capital_covered
+    self.remaining_balance = remaining_balance
+    self.payments = payments
+
+  def to_dict(self):
+    return {
+      "numero": self.number,
+      "fecha_final": self.due_date.strftime("%Y-%m-%d"),
+      "estado": self.status,
+      "interes": self.interest,
+      "interes_cubierto": self.interest_covered,
+      "capital_cubierto": self.capital_covered,
+      "capital_restante": self.remaining_balance,
+      "pagos": [p.to_dict() for p in self.payments],
+    }
+
 class Loan:
   def __init__(
       self, 
@@ -10,6 +80,7 @@ class Loan:
       number_of_installments: int, 
       initial_date: datetime,
       now: datetime,
+      payment_history: list[dict]
     ):
     if (term != 15 and term != 30):
       raise Exception("Los plazos en un prestos deben ser a 15 o 30 días")
@@ -31,12 +102,37 @@ class Loan:
     self.status: str
     self.remaining_balance: float
     self.now = now
-    self.process_loan(now)
-
-  def register_payment(self, amount: int, date: datetime):
+    
+    for payment in payment_history:
+      self.register_payment(payment)
+    self.process_loan()
+    
+  def pay(self, amount: float):
     if self.status == "concluido":
       raise Exception("Se ha intentado registrar un pago en un préstamo ya concluido")
+    
+    detailed_payment = DetailedPayment(
+      number=len(self.payments),
+      date=self.now,
+      amount=amount,
+      interest_paid=0,
+      capital_payment=0,
+      remaining_balance=0,
+    )
+    self.payments.append(detailed_payment)
+    
+    self.remaining_balance = self.process_installment(
+      [detailed_payment],
+      self.installments,
+      self.remaining_balance,
+      True,
+    )
+    self.update_status()
 
+  def register_payment(self, payment):
+    amount = payment["amount"]
+    date = payment["date"]
+    
     if (date - self.now).days >= 1:
       raise Exception("Se ha intentado registrar un pago mas allá de la fecha actual")
     
@@ -49,14 +145,6 @@ class Loan:
       remaining_balance=0,
     )
     self.payments.append(detailed_payment)
-
-    self.remaining_balance = self.process_installment(
-      [detailed_payment],
-      self.installments,
-      self.remaining_balance,
-      True,
-    )
-    self.update_status()
 
   def update_status(self):
     if self.remaining_balance < 0.01:
@@ -79,9 +167,6 @@ class Loan:
   def get_current_number_of_installment(self):
     return int((self.now - self.initial_date).days / self.term) + 1
 
-  def get_detailed_payments(self) -> list[DetailedPayment]:
-    return self.payments
-  
   def recalculated_amortization_schedule(self):
     remaining_balance = self.capital
     detailed_payments = self.get_detailed_payments()
@@ -138,7 +223,7 @@ class Loan:
     
     return table
   
-  def process_loan(self, now: datetime):
+  def process_loan(self):
     self.installments = self.process_installments()
     self.remaining_balance = self.installments[-1].remaining_balance
     self.update_status()
@@ -239,76 +324,6 @@ class Loan:
       "remaining_balance": self.remaining_balance,
       "status": self.status,
       "installments": [l.to_dict() for l in self.installments]
-    }
-  
-class Installment:
-  def __init__(
-      self,
-      number: int, 
-      due_date: datetime, 
-      status: str, 
-      interest: float, 
-      interest_covered: float,
-      capital_covered: float,
-      remaining_balance: float,
-      payments: list[DetailedPayment]
-  ):
-    self.number = number
-    self.due_date = due_date
-    self.status = status
-    self.interest = interest
-    self.interest_covered = interest_covered
-    self.capital_covered = capital_covered
-    self.remaining_balance = remaining_balance
-    self.payments = payments
-
-  def to_dict(self):
-    return {
-      "numero": self.number,
-      "fecha_final": self.due_date.strftime("%Y-%m-%d"),
-      "estado": self.status,
-      "interes": self.interest,
-      "interes_cubierto": self.interest_covered,
-      "capital_cubierto": self.capital_covered,
-      "capital_restante": self.remaining_balance,
-      "pagos": [p.to_dict() for p in self.payments],
-    }
-
-class DetailedPayment:
-  def __init__(
-      self, 
-      number: int, 
-      date: datetime, 
-      amount: float, 
-      interest_paid: float, 
-      capital_payment: float, 
-      remaining_balance: float
-  ):
-    self.number = number
-    self.date = date
-    self.amount = amount
-    self.interest_paid = interest_paid
-    self.capital_payment = capital_payment
-    self.remaining_balance = remaining_balance
-
-  def to_dict(self):
-    return {
-      "numero": self.number,
-      "fecha": self.date.strftime("%Y-%m-%d"),
-      "monto": round(self.amount, 2),
-      "interes_pagado": round(self.interest_paid, 2),
-      "abono_al_capital": round(self.capital_payment, 2),
-      "capital_restante": round(self.remaining_balance, 2),
-    }
-  
-  def to_dict_precise(self):
-    return {
-      "numero": self.number,
-      "fecha": self.date.strftime("%Y-%m-%d"),
-      "monto": self.amount,
-      "interes_pagado": self.interest_paid,
-      "abono_al_capital": self.capital_payment,
-      "capital_restante": self.remaining_balance,
     }
 
 class DateUtils:

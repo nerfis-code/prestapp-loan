@@ -60,10 +60,17 @@ class Installment:
     self.payments = payments
 
   def to_dict(self):
+    translation = {
+      "pending": "pendiente",
+      "late": "atrasado",
+      "payed": "pagado",
+      "mora": "mora",
+      "late payment": "pago_atrasado",
+    }
     return {
       "numero": self.number,
       "fecha_final": self.due_date.strftime("%Y-%m-%d"),
-      "estado": self.status,
+      "estado": translation[self.status],
       "interes": self.interest,
       "interes_cubierto": self.interest_covered,
       "capital_cubierto": self.capital_covered,
@@ -78,9 +85,9 @@ class Loan:
       monthly_rate: float, 
       term: int, 
       number_of_installments: int, 
-      initial_date: datetime,
-      now: datetime,
-      payment_history: list[dict]
+      payment_history: list[dict],
+      initial_date: str,
+      now: str = None,
     ):
     if (term != 15 and term != 30):
       raise Exception("Los plazos en un prestos deben ser a 15 o 30 días")
@@ -89,7 +96,7 @@ class Loan:
     self.rate = monthly_rate if term == 30 else monthly_rate / 2
     self.term = term
     self.number_of_installments = number_of_installments
-    self.initial_date = initial_date
+    self.initial_date = datetime.strptime(initial_date, "%Y-%m-%d")
     self.payments: list[DetailedPayment] = []
 
     P = self.capital
@@ -101,7 +108,7 @@ class Loan:
     self.installments: list[Installment]
     self.status: str
     self.remaining_balance: float
-    self.now = now
+    self.now = datetime.strptime(now, "%Y-%m-%d") if now else datetime.now(ZoneInfo("America/Santo_Domingo"))
     
     for payment in payment_history:
       self.register_payment(payment)
@@ -131,7 +138,7 @@ class Loan:
 
   def register_payment(self, payment):
     amount = payment["amount"]
-    date = payment["date"]
+    date = datetime.strptime(payment["date"], "%Y-%m-%d")
     
     if (date - self.now).days >= 1:
       raise Exception("Se ha intentado registrar un pago mas allá de la fecha actual")
@@ -319,15 +326,15 @@ class Loan:
 
   def to_dict(self):
     return {
-      "initial_date": self.initial_date.strftime("%Y-%m-%d"),
-      "now": self.now.strftime("%Y-%m-%d"),
-      "remaining_balance": self.remaining_balance,
-      "status": self.status,
-      "installments": [l.to_dict() for l in self.installments]
+      "fecha_inicial": self.initial_date.strftime("%Y-%m-%d"),
+      "ahora": self.now.strftime("%Y-%m-%d"),
+      "capital_restante": self.remaining_balance,
+      "estado": self.status,
+      "plazos": [l.to_dict() for l in self.installments]
     }
 
 class DateUtils:
   @staticmethod
-  def future(days: int) -> datetime:
+  def future(days: int) -> str:
     today = datetime.now(ZoneInfo("America/Santo_Domingo"))
-    return today + timedelta(days=days)
+    return (today + timedelta(days=days)).strftime("%Y-%m-%d")

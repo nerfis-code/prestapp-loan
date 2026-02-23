@@ -10,7 +10,7 @@ if __name__ == "__main__":
     { "amount": 200, "date": d.future(2) },
     { "amount": 200, "date": d.future(33) },
   ]
-  loan = Loan(1000, 0.2, 15, 11, today, d.future(35), payments)
+  loan = Loan(1000, 0.2, 15, 11, payments, d.future(0), d.future(35))
 
   loan.pay(200)
   loan.pay(200)

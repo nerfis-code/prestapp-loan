@@ -317,7 +317,7 @@ class Loan:
     if installment.status != "payed" and not last_installment:
       installment.status = "late"
     
-    return remaining_balance
+    return max(remaining_balance, 0)
 
   def process_interest(self, payment: DetailedPayment, installment: Installment):
     if installment.status == "payed" or installment.status == "late payment":

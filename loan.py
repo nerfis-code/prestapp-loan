@@ -96,7 +96,7 @@ class Loan:
     self.rate = monthly_rate if term == 30 else monthly_rate / 2
     self.term = term
     self.number_of_installments = number_of_installments
-    self.initial_date = datetime.strptime(initial_date, "%Y-%m-%d")
+    self.initial_date = self._strptime(initial_date)
     self.payments: list[DetailedPayment] = []
 
     P = self.capital
@@ -108,18 +108,23 @@ class Loan:
     self.installments: list[Installment]
     self.status: str
     self.remaining_balance: float
-    self.end_date = datetime.strptime(end_date, "%Y-%m-%d") if end_date != None else datetime.now(ZoneInfo("America/Santo_Domingo"))
+    self.end_date = self._strptime(end_date) if end_date != None else datetime.now(ZoneInfo("America/Santo_Domingo"))
     
     for payment in payment_history:
       self.register_payment(payment)
     self.process_loan()
-    
+  
+  def _strptime(self, date: str):
+    return datetime \
+      .strptime(date, "%Y-%m-%d") \
+      .replace(tzinfo=ZoneInfo("America/Santo_Domingo"))
+  
   def pay(self, amount: float):
     if self.status == "concluido":
       raise Exception("Se ha intentado registrar un pago en un préstamo ya concluido")
     
     detailed_payment = DetailedPayment(
-      number=len(self.payments),
+      number=len(self.payments)+1,
       date=self.end_date,
       amount=amount,
       interest_paid=0,
@@ -138,13 +143,13 @@ class Loan:
 
   def register_payment(self, payment):
     amount = payment["amount"]
-    date = datetime.strptime(payment["date"], "%Y-%m-%d")
+    date = self._strptime(payment["date"])
     
     if (date - self.end_date).days >= 1:
       raise Exception("Se ha intentado registrar un pago mas allá de la fecha actual")
     
     detailed_payment = DetailedPayment(
-      number=len(self.payments),
+      number=len(self.payments)+1,
       date=date,
       amount=amount,
       interest_paid=0,
@@ -176,11 +181,11 @@ class Loan:
 
   def recalculated_amortization_schedule(self):
     remaining_balance = self.capital
-    detailed_payments = self.get_detailed_payments()
+    detailed_payments = self.payments
     table = []
 
     for payment in detailed_payments:
-      table.append(payment.to_dict())
+      table.append({"estado": "pagado", **payment.to_dict()})
       remaining_balance -= payment.capital_payment
 
     number = detailed_payments[-1].number + 1
@@ -191,17 +196,16 @@ class Loan:
       capital_payment = min(self.fee - interest_paid, remaining_balance)
       remaining_balance -= capital_payment
       date = date + timedelta(days=self.term)
+      payment = DetailedPayment(
+        number,
+        date,
+        capital_payment + interest_paid,
+        interest_paid,
+        capital_payment,
+        remaining_balance
+      ).to_dict()
 
-      table.append(
-        DetailedPayment(
-          number,
-          date,
-          capital_payment + interest_paid,
-          interest_paid,
-          capital_payment,
-          remaining_balance
-        ).to_dict()
-      )
+      table.append({"estado": "por_pagar", **payment})
       number += 1
 
     return table
@@ -248,7 +252,7 @@ class Loan:
       interest_due = remaining_balance * self.rate
 
       installment = Installment(
-        number=number,
+        number=number+1,
         due_date=due_date,
         status="pending",
         interest=interest_due,

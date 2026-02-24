@@ -1,3 +1,8 @@
 Trabajar con Dias feriados
 
 Opción para establecer los Dias de corte en un dia especifico del mes
+
+Arreglar recalculated_amortization_schedule
+- Este no toma en cuenta plazos anteriores no saldados
+
+La fecha de inicio es el dia 1 del plazo o el dia 0

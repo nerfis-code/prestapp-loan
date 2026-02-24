@@ -181,21 +181,21 @@ class Loan:
 
   def recalculated_amortization_schedule(self):
     remaining_balance = self.capital
-    detailed_payments = self.payments
     table = []
-
-    for payment in detailed_payments:
+    number = 1
+    date = self.get_due_date_by_date(self.initial_date)
+    
+    for payment in self.payments:
       table.append({"estado": "pagado", **payment.to_dict()})
       remaining_balance -= payment.capital_payment
-
-    number = detailed_payments[-1].number + 1
-    date = self.get_due_date_by_date(detailed_payments[-1].date)
+      
+      number = payment.number + 1
+      date = self.get_due_date_by_date(payment.date) + timedelta(days=self.term)
 
     while remaining_balance > 0.01:
       interest_paid = self.rate * remaining_balance
       capital_payment = min(self.fee - interest_paid, remaining_balance)
       remaining_balance -= capital_payment
-      date = date + timedelta(days=self.term)
       payment = DetailedPayment(
         number,
         date,
@@ -207,6 +207,7 @@ class Loan:
 
       table.append({"estado": "por_pagar", **payment})
       number += 1
+      date = date + timedelta(days=self.term)
 
     return table
 
@@ -336,9 +337,3 @@ class Loan:
       "estado": self.status,
       "plazos": [l.to_dict() for l in self.installments]
     }
-
-class DateUtils:
-  @staticmethod
-  def future(days: int) -> str:
-    today = datetime.now(ZoneInfo("America/Santo_Domingo"))
-    return (today + timedelta(days=days)).strftime("%Y-%m-%d")

@@ -1,15 +1,15 @@
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Optional
+from typing import Annotated, Any, Literal, Optional
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DetailedPayment(BaseModel):
-    number: int
+    number: Annotated[int, Field(gt=0)]
     date: datetime
-    amount: float
+    amount: Annotated[float, Field(gt=0)]
     interest_paid: float
     capital_payment: float
     remaining_balance: float
@@ -47,7 +47,7 @@ class Installment(BaseModel):
     number: int
     due_date: datetime
     status: InstallmentStatus
-    interest: float
+    interest: Annotated[float, Field(gt=0)]
     interest_covered: float
     capital_covered: float
     remaining_balance: float
@@ -82,9 +82,9 @@ class LoanStatus(Enum):
 
 class Loan(BaseModel):
     capital: float
-    rate: float
-    term: int
-    number_of_installments: int
+    rate: Annotated[float, Field(gt=0, lt=1)]
+    term: Literal[15, 30]
+    number_of_installments: Annotated[int, Field(gt=0)]
     initial_date: datetime
     end_date: datetime
     fee: float
@@ -106,9 +106,6 @@ class Loan(BaseModel):
         initial_date: str,
         end_date: Optional[str] = None,
     ) -> "Loan":
-        if term != 15 and term != 30:
-            raise Exception("Los plazos en un prestos deben ser a 15 o 30 días")
-
         rate = monthly_rate if term == 30 else monthly_rate / 2
         P, r, n = capital, rate, number_of_installments
         fee = P * (r * (1 + r) ** n) / ((1 + r) ** n - 1) if rate != 0 else P / n
@@ -160,7 +157,7 @@ class Loan(BaseModel):
         self.remaining_balance = self.process_installment(
             [detailed_payment], self.installments, self.remaining_balance, True
         )
-        self.update_status()
+        self.status = self.get_status()
 
     def register_payment(self, payment: dict[str, Any]) -> None:
         amount = payment["amount"]
@@ -180,16 +177,15 @@ class Loan(BaseModel):
         )
         self.payments.append(detailed_payment)
 
-    def update_status(self) -> None:
+    def get_status(self) -> LoanStatus:
         if self.remaining_balance < 0.1:
-            self.status = LoanStatus.COMPLETED
-        elif len(self.installments) > 1 \
+            return LoanStatus.COMPLETED
+        if len(self.installments) > 1 \
             and self.installments[-2].status == InstallmentStatus.LATE:
-            self.status = LoanStatus.LATE
-        elif self.installments[-1].status != InstallmentStatus.PAYED:
-            self.status = LoanStatus.PENDING
-        else:
-            self.status = LoanStatus.PAID
+            return LoanStatus.LATE
+        if self.installments[-1].status != InstallmentStatus.PAYED:
+            return LoanStatus.PENDING
+        return LoanStatus.PAID
 
     def get_due_date_by_date(self, date: datetime) -> datetime:
         period = self.initial_date + timedelta(days=self.term)
@@ -256,7 +252,7 @@ class Loan(BaseModel):
     def process_loan(self) -> None:
         self.installments = self.process_installments()
         self.remaining_balance = self.installments[-1].remaining_balance
-        self.update_status()
+        self.status = self.get_status()
 
     def process_installments(self) -> list[Installment]:
         remaining_balance = self.capital
@@ -299,7 +295,7 @@ class Loan(BaseModel):
         payments: list[DetailedPayment],
         installments: list[Installment],
         remaining_balance: float,
-        last_installment: bool,
+        is_last_installment: bool,
     ) -> float:
         installment = installments[-1]
 
@@ -309,11 +305,11 @@ class Loan(BaseModel):
                 self.process_interest(p, prev_installment)
 
             if (prev_installment.status == InstallmentStatus.LATE 
-                    and not last_installment):
+                    and not is_last_installment):
                 prev_installment.status = InstallmentStatus.MORA
                 remaining_balance += (prev_installment.interest 
                                       - prev_installment.interest_covered)
-                installment.interest = remaining_balance * self.rate
+                #installment.interest = remaining_balance * self.rate
 
         for p in payments:
             self.process_interest(p, installment)
@@ -327,7 +323,7 @@ class Loan(BaseModel):
 
         installment.remaining_balance = remaining_balance
 
-        if installment.status != InstallmentStatus.PAYED and not last_installment:
+        if installment.status != InstallmentStatus.PAYED and not is_last_installment:
             installment.status = InstallmentStatus.LATE
 
         return max(remaining_balance, 0)

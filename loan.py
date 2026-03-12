@@ -274,7 +274,7 @@ class Loan:
         payments,
         installments,
         remaining_balance, 
-        installments[-1].number == len(due_dates) - 1
+        installments[-1].number == len(due_dates)
       )
 
     return installments
@@ -323,8 +323,9 @@ class Loan:
     if installment.status == "payed" or installment.status == "late payment":
       return
     
-    installment.interest_covered = min(installment.interest, payment.amount - payment.interest_paid)
-    payment.interest_paid += installment.interest_covered
+    interest_paid = min(installment.interest - installment.interest_covered, payment.amount - payment.interest_paid)
+    installment.interest_covered += interest_paid
+    payment.interest_paid += interest_paid
 
     if installment.interest_covered == installment.interest:
       installment.status = "payed" if installment.status == "pending" else "late payment"

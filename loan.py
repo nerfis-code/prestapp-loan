@@ -70,6 +70,13 @@ class Installment(BaseModel):
         }
 
 
+class LoanStatus(Enum):
+    COMPLETED = 0
+    LATE = 1
+    PENDING = 2
+    PAID = 3
+
+
 class Loan(BaseModel):
     capital: int
     rate: float
@@ -80,7 +87,7 @@ class Loan(BaseModel):
     fee: float
     payments: list[DetailedPayment] = []
     installments: list[Installment] = []
-    status: str = ""
+    status: LoanStatus = LoanStatus.PENDING
     remaining_balance: float = 0.0
 
     model_config = {"arbitrary_types_allowed": True}
@@ -170,13 +177,14 @@ class Loan(BaseModel):
 
     def update_status(self):
         if self.remaining_balance < 0.01:
-            self.status = "concluido"
-        elif len(self.installments) > 1 and self.installments[-2].status == InstallmentStatus.LATE:
-            self.status = "pago_atrasado"
-        elif self.installments[-1].status:
-            self.status = "pago_pendiente"
+            self.status = LoanStatus.COMPLETED
+        elif len(self.installments) > 1 \
+            and self.installments[-2].status == InstallmentStatus.LATE:
+            self.status = LoanStatus.LATE
+        elif self.installments[-1].status != InstallmentStatus.PAYED:
+            self.status = LoanStatus.PENDING
         else:
-            self.status = "periodo_saldado"
+            self.status = LoanStatus.PAID
 
     def get_due_date_by_date(self, date: datetime) -> datetime:
         period = self.initial_date + timedelta(days=self.term)
@@ -336,10 +344,16 @@ class Loan(BaseModel):
             )
 
     def to_dict(self):
+        translation = {
+            LoanStatus.COMPLETED: "concluido",
+            LoanStatus.LATE: "pago_atrasado",
+            LoanStatus.PENDING: "pago_pendiente",
+            LoanStatus.PAID: "periodo_saldado"
+        }
         return {
             "fecha_inicial": self.initial_date.strftime("%Y-%m-%d"),
             "fecha_final": self.end_date.strftime("%Y-%m-%d"),
             "capital_restante": self.remaining_balance,
-            "estado": self.status,
+            "estado": translation[self.status],
             "plazos": [l.to_dict() for l in self.installments],
         }

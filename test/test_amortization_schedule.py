@@ -4,7 +4,7 @@ from loan import Loan
 
 class TestAmortizationSchedule(unittest.TestCase):
     def setUp(self):
-        self.loan = Loan(100_000, 0.2, 30, 10, [], "2026-01-01")
+        self.loan = Loan.create(100_000, 0.2, 30, 10, [], "2026-01-01")
         self.d = DateUtils("2026-01-01")
         
     def test_cantidad_de_cuotas(self):

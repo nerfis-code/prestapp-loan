@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from enum import Enum
 from pydantic import BaseModel, field_validator
+from typing import Any, Optional
 
 class DetailedPayment(BaseModel):
     number: int
@@ -11,7 +12,7 @@ class DetailedPayment(BaseModel):
     capital_payment: float
     remaining_balance: float
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         return {
             "numero": self.number,
             "fecha": self.date.strftime("%Y-%m-%d"),
@@ -21,7 +22,7 @@ class DetailedPayment(BaseModel):
             "capital_restante": round(self.remaining_balance, 2),
         }
 
-    def to_dict_precise(self):
+    def to_dict_precise(self) -> dict[str, Any]:
         return {
             "numero": self.number,
             "fecha": self.date.strftime("%Y-%m-%d"),
@@ -50,7 +51,7 @@ class Installment(BaseModel):
     remaining_balance: float
     payments: list[DetailedPayment]
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         translation = {
             InstallmentStatus.PENDING: "pendiente",
             InstallmentStatus.LATE: "atrasado",
@@ -78,7 +79,7 @@ class LoanStatus(Enum):
 
 
 class Loan(BaseModel):
-    capital: int
+    capital: float
     rate: float
     term: int
     number_of_installments: int
@@ -99,9 +100,9 @@ class Loan(BaseModel):
         monthly_rate: float,
         term: int,
         number_of_installments: int,
-        payment_history: list[dict],
+        payment_history: list[dict[str, Any]],
         initial_date: str,
-        end_date: str = None,
+        end_date: Optional[str] = None,
     ) -> "Loan":
         if term != 15 and term != 30:
             raise Exception("Los plazos en un prestos deben ser a 15 o 30 días")
@@ -140,8 +141,8 @@ class Loan(BaseModel):
     def _strptime(self, date: str) -> datetime:
         return self._strptime_static(date)
 
-    def pay(self, amount: float):
-        if self.status == "concluido":
+    def pay(self, amount: float) -> None:
+        if self.status == LoanStatus.COMPLETED:
             raise Exception("Se ha intentado registrar un pago en un préstamo ya concluido")
 
         detailed_payment = DetailedPayment(
@@ -158,7 +159,7 @@ class Loan(BaseModel):
         )
         self.update_status()
 
-    def register_payment(self, payment: dict):
+    def register_payment(self, payment: dict[str, Any]) -> None:
         amount = payment["amount"]
         date = self._strptime(payment["date"])
 
@@ -175,8 +176,8 @@ class Loan(BaseModel):
         )
         self.payments.append(detailed_payment)
 
-    def update_status(self):
-        if self.remaining_balance < 0.01:
+    def update_status(self) -> None:
+        if self.remaining_balance < 0.1:
             self.status = LoanStatus.COMPLETED
         elif len(self.installments) > 1 \
             and self.installments[-2].status == InstallmentStatus.LATE:
@@ -195,7 +196,7 @@ class Loan(BaseModel):
     def get_current_number_of_installment(self) -> int:
         return int((self.end_date - self.initial_date).days / self.term) + 1
 
-    def recalculated_amortization_schedule(self):
+    def recalculated_amortization_schedule(self) -> list[dict[str, Any]]:
         remaining_balance = self.capital
         table = []
         number = 1
@@ -211,7 +212,7 @@ class Loan(BaseModel):
             interest_paid = self.rate * remaining_balance
             capital_payment = min(self.fee - interest_paid, remaining_balance)
             remaining_balance -= capital_payment
-            payment = DetailedPayment(
+            payment_dict = DetailedPayment(
                 number=number,
                 date=date,
                 amount=capital_payment + interest_paid,
@@ -219,13 +220,13 @@ class Loan(BaseModel):
                 capital_payment=capital_payment,
                 remaining_balance=remaining_balance,
             ).to_dict()
-            table.append({"estado": "por_pagar", **payment})
+            table.append({"estado": "por_pagar", **payment_dict})
             number += 1
             date = date + timedelta(days=self.term)
 
         return table
 
-    def outdate_amortization_schedule(self):
+    def outdate_amortization_schedule(self) -> list[dict[str, Any]]:
         remaining_balance = self.capital
         date: datetime = self.initial_date
         table = []
@@ -248,7 +249,7 @@ class Loan(BaseModel):
 
         return table
 
-    def process_loan(self):
+    def process_loan(self) -> None:
         self.installments = self.process_installments()
         self.remaining_balance = self.installments[-1].remaining_balance
         self.update_status()
@@ -325,7 +326,7 @@ class Loan(BaseModel):
 
         return max(remaining_balance, 0)
 
-    def process_interest(self, payment: DetailedPayment, installment: Installment):
+    def process_interest(self, payment: DetailedPayment, installment: Installment) -> None:
         if installment.status in (InstallmentStatus.PAYED, InstallmentStatus.LATE_PAYMENT):
             return
 
@@ -343,7 +344,7 @@ class Loan(BaseModel):
                 else InstallmentStatus.LATE_PAYMENT
             )
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         translation = {
             LoanStatus.COMPLETED: "concluido",
             LoanStatus.LATE: "pago_atrasado",

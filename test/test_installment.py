@@ -8,3 +8,6 @@ class TestInstallment(unittest.TestCase):
         loan = Loan(100_000, 0.2, 30, 10, [], "2026-01-01", d.future(30))
         
         self.assertEqual(len(loan.installments), 2)
+
+if __name__ == '__main__':
+    unittest.main()

@@ -1,0 +1,5 @@
+[tool.ruff]
+lint.select = ["E", "F", "I"]  # errores, pyflakes, isort
+
+[tool.mypy]
+strict = true

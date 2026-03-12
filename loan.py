@@ -350,7 +350,7 @@ class Loan(BaseModel):
         installment.interest_covered += interest_paid
         payment.interest_paid += interest_paid
 
-        if installment.interest_covered == installment.interest:
+        if installment.interest_covered >= installment.interest:
             installment.status = (
                 InstallmentStatus.PAYED
                 if installment.status == InstallmentStatus.PENDING

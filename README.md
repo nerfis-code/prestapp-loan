@@ -4,4 +4,4 @@
 
 `ruff check loan.py`
 `ruff check --fix loan.py`
-`mypy loan.py`
+`mypy --no-incremental loan.py`

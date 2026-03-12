@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 from enum import Enum
-from pydantic import BaseModel, field_validator
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
+
+from pydantic import BaseModel
+
 
 class DetailedPayment(BaseModel):
     number: int
@@ -143,7 +145,8 @@ class Loan(BaseModel):
 
     def pay(self, amount: float) -> None:
         if self.status == LoanStatus.COMPLETED:
-            raise Exception("Se ha intentado registrar un pago en un préstamo ya concluido")
+            raise Exception("Se ha intentado registrar un \
+                            pago en un préstamo ya concluido")
 
         detailed_payment = DetailedPayment(
             number=len(self.payments) + 1,
@@ -164,7 +167,8 @@ class Loan(BaseModel):
         date = self._strptime(payment["date"])
 
         if (date - self.end_date).days >= 1:
-            raise Exception("Se ha intentado registrar un pago mas allá de la fecha actual")
+            raise Exception("Se ha intentado registrar un \
+                            pago mas allá de la fecha actual")
 
         detailed_payment = DetailedPayment(
             number=len(self.payments) + 1,
@@ -304,9 +308,11 @@ class Loan(BaseModel):
             for p in payments:
                 self.process_interest(p, prev_installment)
 
-            if prev_installment.status == InstallmentStatus.LATE and not last_installment:
+            if (prev_installment.status == InstallmentStatus.LATE 
+                    and not last_installment):
                 prev_installment.status = InstallmentStatus.MORA
-                remaining_balance += prev_installment.interest - prev_installment.interest_covered
+                remaining_balance += (prev_installment.interest 
+                                      - prev_installment.interest_covered)
                 installment.interest = remaining_balance * self.rate
 
         for p in payments:
@@ -326,8 +332,15 @@ class Loan(BaseModel):
 
         return max(remaining_balance, 0)
 
-    def process_interest(self, payment: DetailedPayment, installment: Installment) -> None:
-        if installment.status in (InstallmentStatus.PAYED, InstallmentStatus.LATE_PAYMENT):
+    def process_interest(
+        self, 
+        payment: DetailedPayment, 
+        installment: Installment
+    ) -> None:
+        if installment.status in (
+            InstallmentStatus.PAYED,
+            InstallmentStatus.LATE_PAYMENT,
+        ):
             return
 
         interest_paid = min(
